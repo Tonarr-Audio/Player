@@ -1,0 +1,9 @@
+com.soundsphere.aio.app-pngs-0 C:\Users\NoahYTK\Documents\LRC\android\app\build\generated\res\pngs\debug
+com.soundsphere.aio.app-resValues-1 C:\Users\NoahYTK\Documents\LRC\android\app\build\generated\res\resValues\debug
+com.soundsphere.aio.app-updated_navigation_xml-2 C:\Users\NoahYTK\Documents\LRC\android\app\build\generated\updated_navigation_xml\debug
+com.soundsphere.aio.app-packageDebugResources-3 C:\Users\NoahYTK\Documents\LRC\android\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+com.soundsphere.aio.app-packageDebugResources-4 C:\Users\NoahYTK\Documents\LRC\android\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+com.soundsphere.aio.app-debug-5 C:\Users\NoahYTK\Documents\LRC\android\app\build\intermediates\merged_res\debug\mergeDebugResources
+com.soundsphere.aio.app-debug-6 C:\Users\NoahYTK\Documents\LRC\android\app\src\debug\res
+com.soundsphere.aio.app-main-7 C:\Users\NoahYTK\Documents\LRC\android\app\src\main\res
+gradleHome-0 C:\Users\NoahYTK\.gradle
