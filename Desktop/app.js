@@ -41,6 +41,47 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+// --- SoundSphere Host Helper Functions ---
+function getHostBaseUrl() {
+  const url = (state.config && state.config.soundsphere_host_url) || localStorage.getItem('soundsphere_host_url') || '';
+  return url.trim().replace(/\/+$/, '');
+}
+
+function getHostToken() {
+  return (state.config && state.config.soundsphere_host_token) || localStorage.getItem('soundsphere_host_token') || '';
+}
+
+function getTrackCoverUrl(track) {
+  if (!track) return '';
+  if (track.cover_url) return track.cover_url;
+  const isHost = track.source === 'soundsphere_host' || (track.file_path && track.file_path.startsWith('host://')) || (track.id && String(track.id).startsWith('host://'));
+  const hostBase = getHostBaseUrl();
+  if (isHost && hostBase) {
+    const token = getHostToken();
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+    const trackId = track.host_id || (track.id ? String(track.id).replace(/^host:\/\//, '') : '');
+    return `${hostBase}/api/cover?id=${encodeURIComponent(trackId)}&path=${encodeURIComponent(track.file_path || '')}${tokenParam}`;
+  }
+  return `/api/track/cover?path=${encodeURIComponent(track.file_path || track.id || '')}`;
+}
+window.getTrackCoverUrl = getTrackCoverUrl;
+
+function getTrackStreamUrl(track) {
+  if (!track) return '';
+  if (track.stream_url) return track.stream_url;
+  if (track.file_path && track.file_path.startsWith('content://')) return track.file_path;
+  const isHost = track.source === 'soundsphere_host' || (track.file_path && track.file_path.startsWith('host://')) || (track.id && String(track.id).startsWith('host://'));
+  const hostBase = getHostBaseUrl();
+  if (isHost && hostBase) {
+    const token = getHostToken();
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+    const trackId = track.host_id || (track.id ? String(track.id).replace(/^host:\/\//, '') : '');
+    return `${hostBase}/api/audio/stream?id=${encodeURIComponent(trackId)}&path=${encodeURIComponent(track.file_path || '')}${tokenParam}`;
+  }
+  return `/api/audio/stream?path=${encodeURIComponent(track.file_path || track.id || '')}`;
+}
+window.getTrackStreamUrl = getTrackStreamUrl;
+
 // DOM Element Selectors
 const $ = (id) => document.getElementById(id);
 
@@ -681,7 +722,7 @@ function renderTracksTable(container = elements.tracksTableBody, tracks = getFil
         <td>
           <div class="track-row-cell-title">
             <div class="track-row-cover">
-              <img src="/api/track/cover?path=${encodeURIComponent(t.file_path)}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+              <img src="${escapeHtml(getTrackCoverUrl(t))}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none; width:18px; height:18px;"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
             </div>
             <div>
@@ -828,7 +869,7 @@ function openArtistDetail(artistName) {
     elements.artistDetailAlbumsGrid.innerHTML = Array.from(albumMap.values()).map(a => `
       <div class="album-card" draggable="true" data-album="${escapeHtml(a.title)}" data-artist="${escapeHtml(a.artist)}">
         <div class="album-cover">
-          <img src="/api/track/cover?path=${encodeURIComponent(a.firstTrack.file_path)}" loading="lazy" onerror="this.style.display='none';" />
+          <img src="${escapeHtml(getTrackCoverUrl(a.firstTrack))}" loading="lazy" onerror="this.style.display='none';" />
         </div>
         <div class="card-title">${escapeHtml(a.title)}</div>
         <div class="card-meta">${a.tracks.length} Songs</div>
@@ -886,7 +927,7 @@ function renderAlbumsGrid() {
   elements.albumsGrid.innerHTML = sortedAlbums.map(a => `
     <div class="album-card" draggable="true" data-album="${escapeHtml(a.title)}" data-artist="${escapeHtml(a.artist)}">
       <div class="album-cover">
-        <img src="/api/track/cover?path=${encodeURIComponent(a.firstTrack.file_path)}" loading="lazy" onerror="this.style.display='none';" />
+        <img src="${escapeHtml(getTrackCoverUrl(a.firstTrack))}" loading="lazy" onerror="this.style.display='none';" />
       </div>
       <div class="card-title">${escapeHtml(a.title)}</div>
       <div class="card-meta">${escapeHtml(a.artist)} • ${a.tracks.length} Songs</div>
@@ -910,28 +951,17 @@ function renderAlbumsGrid() {
 }
 
 function openAlbumDetail(albumObj) {
+  if (!albumObj) return;
   state.selectedAlbum = albumObj;
-  let albumTracks = [];
-  if (Array.isArray(albumObj.tracks) && albumObj.tracks.length > 0) {
-    albumTracks = albumObj.tracks;
-  } else {
-    const albTitle = (albumObj.title || '').trim().toLowerCase();
-    const artName = (albumObj.artist || '').trim().toLowerCase();
-    albumTracks = state.tracks.filter(t => {
-      const matchAlb = (t.album || '').trim().toLowerCase() === albTitle;
-      if (!matchAlb) return false;
-      if (artName && artName !== 'unbekannt' && artName !== 'various artists') {
-        return (t.artist || '').trim().toLowerCase() === artName;
-      }
-      return true;
-    });
-  }
+  const albumTracks = (albumObj.tracks && albumObj.tracks.length > 0)
+    ? albumObj.tracks
+    : state.tracks.filter(t => (t.album || '').trim() === (albumObj.title || '').trim());
 
   if (elements.albumDetailTitle) elements.albumDetailTitle.textContent = albumObj.title || 'Album';
   if (elements.albumDetailMeta) elements.albumDetailMeta.textContent = `${albumObj.artist || 'Künstler'} • ${albumTracks.length} Songs`;
 
   if (albumTracks.length > 0 && elements.albumDetailCoverImg) {
-    elements.albumDetailCoverImg.src = `/api/track/cover?path=${encodeURIComponent(albumTracks[0].file_path)}`;
+    elements.albumDetailCoverImg.src = getTrackCoverUrl(albumTracks[0]);
     elements.albumDetailCoverImg.onload = () => {
       elements.albumDetailCoverImg.style.display = 'block';
       if (elements.albumDetailCoverFallback) elements.albumDetailCoverFallback.style.display = 'none';
@@ -969,7 +999,7 @@ function getPlaylistCoverUrl(pl) {
     const firstTid = pl.track_ids[0];
     const track = state.tracks.find(t => t.id === firstTid || t.file_path === firstTid || (t.plex_key && `plex_${t.plex_key}` === firstTid));
     if (track) {
-      return `/api/track/cover?path=${encodeURIComponent(track.file_path || track.id)}`;
+      return getTrackCoverUrl(track);
     }
     return `/api/track/cover?path=${encodeURIComponent(firstTid)}`;
   }
@@ -1428,7 +1458,7 @@ function toggleFullscreen(open) {
   if (shouldOpen) {
     elements.fullscreenVisualizer.classList.add('open');
     if (state.selectedTrack) {
-      const coverUrl = `/api/track/cover?path=${encodeURIComponent(state.selectedTrack.file_path)}`;
+      const coverUrl = getTrackCoverUrl(state.selectedTrack);
       if (elements.fsCoverImg) {
         elements.fsCoverImg.src = coverUrl;
         elements.fsCoverImg.classList.remove('hidden');
@@ -1680,7 +1710,7 @@ async function selectTrack(track, autoPlay = true) {
   if (elements.spTitle) elements.spTitle.textContent = track.title || 'Unbekannter Titel';
   if (elements.spArtist) elements.spArtist.textContent = track.artist || 'Unbekannter Interpret';
 
-  const coverUrl = `/api/track/cover?path=${encodeURIComponent(track.file_path)}`;
+  const coverUrl = getTrackCoverUrl(track);
   
   // Bottom Player Bar Artwork (True Dual-Layer Crossfade 1.0s)
   crossfadeImage(elements.spCoverImg, elements.spCoverImgBack, elements.spCoverFallback, coverUrl, (loadedImg) => {
@@ -1708,9 +1738,7 @@ async function selectTrack(track, autoPlay = true) {
 
   // Load Audio
   setupAudioContext();
-  const streamSrc = (track.file_path && track.file_path.startsWith('content://')) 
-    ? track.file_path 
-    : `/api/audio/stream?path=${encodeURIComponent(track.file_path)}`;
+  const streamSrc = getTrackStreamUrl(track);
   elements.audioElement.src = streamSrc;
   
   if (!autoPlay && state.pendingResumeTime > 0) {
@@ -1738,7 +1766,7 @@ async function selectTrack(track, autoPlay = true) {
 
   // Native Android MediaSession Sync
   if (window.AndroidBridge && window.AndroidBridge.updatePlaybackState) {
-    const rawCover = track.cover_url || `/api/track/cover?path=${encodeURIComponent(track.file_path)}`;
+    const rawCover = getTrackCoverUrl(track);
     const fullCover = (rawCover.startsWith('http') || rawCover.startsWith('content:')) ? rawCover : (window.location.origin + rawCover);
     window.AndroidBridge.updatePlaybackState(track.title || '', track.artist || '', track.album || '', fullCover, autoPlay, 0, track.duration || 0);
   }
@@ -1808,6 +1836,30 @@ function processAndSetLyrics(rawLines) {
 async function loadTrackLyrics(track, isRetry = false) {
   if (!isRetry) state.parsedLyrics = [];
   if (!track) return;
+
+  const isHost = track.source === 'soundsphere_host' || (track.file_path && track.file_path.startsWith('host://')) || (track.id && String(track.id).startsWith('host://'));
+  const hostBase = getHostBaseUrl();
+
+  // 1. Direct SoundSphere Host Lyrics resolution
+  if (isHost && hostBase) {
+    try {
+      const token = getHostToken();
+      const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+      const trackId = track.host_id || (track.id ? String(track.id).replace(/^host:\/\//, '') : '');
+      const hostLyricsUrl = `${hostBase}/api/lyrics?id=${encodeURIComponent(trackId)}&path=${encodeURIComponent(track.file_path || '')}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}${tokenParam}`;
+      const hRes = await fetch(hostLyricsUrl, { signal: AbortSignal.timeout(8000) });
+      if (hRes.ok) {
+        const hData = await hRes.json();
+        if (hData && hData.content) {
+          parseLrc(hData.content);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Direct Host lyrics fetch error:', e);
+    }
+  }
+
   try {
     const filePath = track.file_path || track.id || '';
     const url = `/api/track/lyrics?path=${encodeURIComponent(filePath)}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}&album=${encodeURIComponent(track.album || '')}&duration=${encodeURIComponent(track.duration || 0)}`;
@@ -2383,7 +2435,7 @@ function setupEventListeners() {
       const tr = state.selectedTrack;
       const cur = elements.audioElement ? elements.audioElement.currentTime : 0;
       const dur = (elements.audioElement && elements.audioElement.duration) ? elements.audioElement.duration : (tr.duration || 0);
-      const rawCover = tr.cover_url || `/api/track/cover?path=${encodeURIComponent(tr.file_path)}`;
+      const rawCover = getTrackCoverUrl(tr);
       const fullCover = (rawCover.startsWith('http') || rawCover.startsWith('content:')) ? rawCover : (window.location.origin + rawCover);
       window.AndroidBridge.updatePlaybackState(tr.title || '', tr.artist || '', tr.album || '', fullCover, true, cur, dur);
     }
@@ -2401,7 +2453,7 @@ function setupEventListeners() {
       const tr = state.selectedTrack;
       const cur = elements.audioElement ? elements.audioElement.currentTime : 0;
       const dur = (elements.audioElement && elements.audioElement.duration) ? elements.audioElement.duration : (tr.duration || 0);
-      const rawCover = tr.cover_url || `/api/track/cover?path=${encodeURIComponent(tr.file_path)}`;
+      const rawCover = getTrackCoverUrl(tr);
       const fullCover = (rawCover.startsWith('http') || rawCover.startsWith('content:')) ? rawCover : (window.location.origin + rawCover);
       window.AndroidBridge.updatePlaybackState(tr.title || '', tr.artist || '', tr.album || '', fullCover, false, cur, dur);
     }
@@ -2773,93 +2825,164 @@ function setupEventListeners() {
   window.updateAuthUI = updateAuthUI;
 
   // SoundSphere Host Action Handlers
+  async function syncHostLibrary(customUrl = null, customToken = null) {
+    const hostUrl = (customUrl || getHostBaseUrl()).trim().replace(/\/+$/, '');
+    const token = (customToken !== null ? customToken : getHostToken());
+    if (!hostUrl) {
+      showToast('Bitte zuerst SoundSphere Host URL konfigurieren.');
+      return;
+    }
+    if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '⏳ Synchronisiere SoundSphere Host Mediathek...';
+    showToast('🔄 Synchronisiere SoundSphere Host...');
+    try {
+      const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+      const headers = { 'Accept': 'application/json' };
+      if (token) headers['X-SoundSphere-Token'] = token;
+
+      const res = await fetch(`${hostUrl}/api/tracks${tokenQuery}`, { headers, signal: AbortSignal.timeout(20000) });
+      if (res.ok) {
+        const data = await res.json();
+        const rawTracks = Array.isArray(data) ? data : (Array.isArray(data.tracks) ? data.tracks : []);
+        
+        const mappedTracks = rawTracks.map(t => {
+          const tid = t.id || t.file_path || String(Math.random());
+          const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+          return {
+            id: String(tid).startsWith('host://') ? tid : `host://${tid}`,
+            host_id: t.id || tid,
+            title: t.title || 'Unbekannter Titel',
+            artist: t.artist || 'Unbekannter Interpret',
+            album: t.album || 'Unbekanntes Album',
+            duration: t.duration || 0,
+            duration_str: t.duration_str || (t.duration ? formatDuration(t.duration) : '00:00'),
+            genre: t.genre || '',
+            year: t.year || null,
+            track_no: t.track_no || null,
+            file_path: t.file_path || `host://${tid}`,
+            source: 'soundsphere_host',
+            cover_url: `${hostUrl}/api/cover?id=${encodeURIComponent(t.id || tid)}&path=${encodeURIComponent(t.file_path || '')}${tokenParam}`,
+            stream_url: `${hostUrl}/api/audio/stream?id=${encodeURIComponent(t.id || tid)}&path=${encodeURIComponent(t.file_path || '')}${tokenParam}`,
+            lyrics_url: `${hostUrl}/api/lyrics?id=${encodeURIComponent(t.id || tid)}&path=${encodeURIComponent(t.file_path || '')}${tokenParam}`
+          };
+        });
+
+        // Filter out existing host tracks and merge
+        const nonHostTracks = state.tracks.filter(t => t.source !== 'soundsphere_host' && !(t.file_path && t.file_path.startsWith('host://')) && !(t.id && String(t.id).startsWith('host://')));
+        state.tracks = [...nonHostTracks, ...mappedTracks];
+
+        try {
+          localStorage.setItem('soundsphere_host_tracks', JSON.stringify(mappedTracks));
+        } catch (e) {
+          console.warn('Could not cache host tracks in localStorage:', e);
+        }
+
+        updateBadgeCounts();
+        renderTracksTable();
+        renderArtistsGrid();
+        renderAlbumsGrid();
+        updateAuthUI(state.config);
+
+        if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = `✅ ${mappedTracks.length} Host Songs synchronisiert!`;
+        showToast(`✅ ${mappedTracks.length} Host Songs erfolgreich synchronisiert!`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = err.detail || `Fehler beim Synchronisieren (HTTP ${res.status}).`;
+        showToast(`❌ Host-Synchronisation fehlgeschlagen (HTTP ${res.status})`);
+      }
+    } catch (err) {
+      console.warn('Host sync error:', err);
+      if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '❌ Verbindungsfehler zum Host.';
+      showToast('❌ Verbindungsfehler beim Synchronisieren mit dem Host.');
+    }
+  }
+  window.syncHostLibrary = syncHostLibrary;
+
   if (elements.btnTestHostConnection) {
     elements.btnTestHostConnection.addEventListener('click', async () => {
-      const url = elements.hostUrlInput ? elements.hostUrlInput.value.trim() : '';
+      const rawUrl = elements.hostUrlInput ? elements.hostUrlInput.value.trim() : '';
       const token = elements.hostTokenInput ? elements.hostTokenInput.value.trim() : '';
-      if (!url) {
+      if (!rawUrl) {
         showToast('Bitte SoundSphere Host URL eingeben.');
         return;
       }
+      const url = rawUrl.replace(/\/+$/, '');
       if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '⏳ Teste Verbindung zum Host...';
+
       try {
-        await fetch('/api/config', {
+        // Save to localStorage immediately
+        localStorage.setItem('soundsphere_host_url', url);
+        localStorage.setItem('soundsphere_host_token', token);
+        localStorage.setItem('soundsphere_host_enabled', 'true');
+        if (!state.config) state.config = {};
+        state.config.soundsphere_host_url = url;
+        state.config.soundsphere_host_token = token;
+        state.config.soundsphere_host_enabled = true;
+
+        // Also notify local backend if available
+        fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ soundsphere_host_url: url, soundsphere_host_token: token, soundsphere_host_enabled: true })
-        });
-        const res = await fetch('/api/host/test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, token })
-        });
-        if (res.ok) {
-          const status = await res.json();
-          if (status.success) {
-            if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = `✅ Verbunden mit ${status.host_info?.name || 'SoundSphere Host'}!`;
-            showToast('✅ Erfolgreich mit SoundSphere Host verbunden!');
-            await fetchConfig();
-            if (elements.btnSyncHostLibrary) elements.btnSyncHostLibrary.click();
-          } else {
-            if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = `❌ ${status.error || 'Verbindung fehlgeschlagen'}`;
-          }
+        }).catch(() => {});
+
+        // Direct test against Host API (/api/info or /api/status)
+        const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+        const headers = { 'Accept': 'application/json' };
+        if (token) headers['X-SoundSphere-Token'] = token;
+
+        const infoRes = await fetch(`${url}/api/info${tokenQuery}`, { headers, signal: AbortSignal.timeout(7000) });
+        if (infoRes.ok) {
+          const info = await infoRes.json();
+          const hostName = info.host_name || info.app || 'SoundSphere Host';
+          const songCount = info.stats?.total_tracks || 0;
+          if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = `✅ Verbunden mit ${hostName} (${songCount} Titel auf Server)!`;
+          showToast(`✅ Erfolgreich mit ${hostName} verbunden!`);
+          updateAuthUI(state.config);
+          await syncHostLibrary(url, token);
+        } else if (infoRes.status === 401) {
+          if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '❌ Authentifizierungsfehler: Ungültiger oder fehlender Token.';
+          showToast('❌ Ungültiger Host Token.');
         } else {
-          if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '❌ Verbindung zum Host fehlgeschlagen.';
+          if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = `❌ Server antwortete mit Status ${infoRes.status}`;
+          showToast(`❌ Host Verbindung fehlgeschlagen (${infoRes.status})`);
         }
       } catch (e) {
-        if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '❌ Verbindungsfehler.';
+        console.warn('Host connection test error:', e);
+        if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '❌ Verbindungsfehler (Host nicht erreichbar).';
+        showToast('❌ SoundSphere Host nicht erreichbar.');
       }
     });
   }
 
   if (elements.btnSyncHostLibrary) {
     elements.btnSyncHostLibrary.addEventListener('click', async () => {
-      if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '⏳ Synchronisiere SoundSphere Host Mediathek...';
-      showToast('🔄 Synchronisiere SoundSphere Host...');
-      try {
-        const res = await fetch('/api/host/sync', { method: 'POST' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.tracks) {
-            const nonHostTracks = state.tracks.filter(t => t.source !== 'soundsphere_host' && !(t.file_path && t.file_path.startsWith('host://')) && !(t.id && t.id.startsWith('host://')));
-            state.tracks = [...nonHostTracks, ...data.tracks];
-            updateBadgeCounts();
-            renderTracksTable();
-            renderArtistsGrid();
-            renderAlbumsGrid();
-            if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = `✅ ${data.count || data.tracks.length} Host Songs synchronisiert!`;
-            showToast(`✅ ${data.count || data.tracks.length} Host Songs erfolgreich synchronisiert!`);
-          }
-        } else {
-          const err = await res.json().catch(() => ({}));
-          if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = err.detail || 'Fehler beim Synchronisieren.';
-          showToast(err.detail || 'Fehler bei der Host-Synchronisation.');
-        }
-      } catch (err) {
-        if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = 'Verbindungsfehler zum Host.';
-        showToast('Verbindungsfehler beim Synchronisieren mit dem Host.');
-      }
-      updateAuthUI();
+      await syncHostLibrary();
     });
   }
 
   if (elements.btnDisconnectHost) {
     elements.btnDisconnectHost.addEventListener('click', async () => {
       try {
-        await fetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ soundsphere_host_url: '', soundsphere_host_token: '', soundsphere_host_enabled: false })
-        });
+        localStorage.removeItem('soundsphere_host_url');
+        localStorage.removeItem('soundsphere_host_token');
+        localStorage.setItem('soundsphere_host_enabled', 'false');
+        localStorage.removeItem('soundsphere_host_tracks');
         if (state.config) {
           state.config.soundsphere_host_url = '';
           state.config.soundsphere_host_token = '';
           state.config.soundsphere_host_enabled = false;
         }
+        fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ soundsphere_host_url: '', soundsphere_host_token: '', soundsphere_host_enabled: false })
+        }).catch(() => {});
+
         if (elements.hostUrlInput) elements.hostUrlInput.value = '';
         if (elements.hostTokenInput) elements.hostTokenInput.value = '';
+        if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '';
         // Remove only Host tracks from library
-        state.tracks = state.tracks.filter(t => t.source !== 'soundsphere_host' && !(t.file_path && t.file_path.startsWith('host://')) && !(t.id && t.id.startsWith('host://')));
+        state.tracks = state.tracks.filter(t => t.source !== 'soundsphere_host' && !(t.file_path && t.file_path.startsWith('host://')) && !(t.id && String(t.id).startsWith('host://')));
         updateBadgeCounts();
         renderTracksTable();
         renderArtistsGrid();
@@ -3196,7 +3319,7 @@ function updateMediaSession(track) {
     return;
   }
 
-  const coverUrl = `/api/track/cover?path=${encodeURIComponent(track.file_path)}`;
+  const coverUrl = getTrackCoverUrl(track);
   try {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title || 'Unbekannter Titel',
@@ -3368,26 +3491,35 @@ async function loadImportPlaylists(source) {
 
 // --- Configuration & Multi-Directory Management ---
 async function fetchConfig() {
+  let cfg = state.config || {};
   try {
     const res = await fetch('/api/config');
     if (res.ok) {
-      const cfg = await res.json();
-      state.config = cfg;
-      state.directories = Array.isArray(cfg.directories) ? cfg.directories : (cfg.last_music_dir ? [cfg.last_music_dir] : []);
-      if (cfg.theme) setTheme(cfg.theme);
-      if (elements.hostUrlInput) elements.hostUrlInput.value = cfg.soundsphere_host_url || '';
-      if (elements.hostTokenInput) elements.hostTokenInput.value = cfg.soundsphere_host_token || '';
-      if (elements.plexUrlInput) elements.plexUrlInput.value = cfg.plex_url || '';
-      if (elements.plexTokenInput) elements.plexTokenInput.value = cfg.plex_token || '';
-      if (elements.spotifyClientIdInput) elements.spotifyClientIdInput.value = cfg.spotify_client_id || '';
-      if (elements.spotifyClientSecretInput) elements.spotifyClientSecretInput.value = cfg.spotify_client_secret || '';
-
-      updateAuthUI(cfg);
-      renderDirectoriesList();
+      cfg = await res.json();
     }
   } catch (err) {
-    console.warn('Could not fetch config:', err);
+    console.warn('Could not fetch config from /api/config, fallback to localStorage:', err);
   }
+
+  // Restore host config from localStorage if missing or not set
+  if (!cfg.soundsphere_host_url && localStorage.getItem('soundsphere_host_url')) {
+    cfg.soundsphere_host_url = localStorage.getItem('soundsphere_host_url');
+    cfg.soundsphere_host_token = localStorage.getItem('soundsphere_host_token') || '';
+    cfg.soundsphere_host_enabled = localStorage.getItem('soundsphere_host_enabled') !== 'false';
+  }
+
+  state.config = cfg;
+  state.directories = Array.isArray(cfg.directories) ? cfg.directories : (cfg.last_music_dir ? [cfg.last_music_dir] : []);
+  if (cfg.theme) setTheme(cfg.theme);
+  if (elements.hostUrlInput) elements.hostUrlInput.value = cfg.soundsphere_host_url || '';
+  if (elements.hostTokenInput) elements.hostTokenInput.value = cfg.soundsphere_host_token || '';
+  if (elements.plexUrlInput) elements.plexUrlInput.value = cfg.plex_url || '';
+  if (elements.plexTokenInput) elements.plexTokenInput.value = cfg.plex_token || '';
+  if (elements.spotifyClientIdInput) elements.spotifyClientIdInput.value = cfg.spotify_client_id || '';
+  if (elements.spotifyClientSecretInput) elements.spotifyClientSecretInput.value = cfg.spotify_client_secret || '';
+
+  updateAuthUI(cfg);
+  renderDirectoriesList();
 }
 
 function renderDirectoriesList() {
@@ -3534,22 +3666,25 @@ async function loadInitialTracks() {
 
   if (state.directories && state.directories.length > 0) {
     await scanMusicFolders();
-  } else if (state.config && state.config.soundsphere_host_url && state.config.soundsphere_host_enabled) {
-    try {
-      const hostRes = await fetch('/api/host/sync', { method: 'POST' });
-      if (hostRes.ok) {
-        const hostData = await hostRes.json();
-        if (hostData.tracks) {
-          state.tracks = hostData.tracks;
+  } else if (getHostBaseUrl()) {
+    // 1. Load cached host tracks immediately for zero delay
+    const cachedHost = localStorage.getItem('soundsphere_host_tracks');
+    if (cachedHost) {
+      try {
+        const parsed = JSON.parse(cachedHost);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          state.tracks = parsed;
           updateBadgeCounts();
           renderTracksTable();
           renderArtistsGrid();
           renderAlbumsGrid();
           updateAuthUI();
-          return;
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+    }
+    // 2. Fetch fresh tracks from Host in background
+    syncHostLibrary().catch(() => {});
+    if (state.tracks.length > 0) return;
   } else if (state.config && state.config.plex_url && state.config.plex_token) {
     try {
       const plexRes = await fetch('/api/plex/sync', { method: 'POST' });
