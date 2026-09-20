@@ -65,6 +65,25 @@ function isHostTrack(track) {
          (track.id && String(track.id).startsWith('host://'));
 }
 
+function isPlexTrack(track) {
+  if (!track) return false;
+  if (track.source === 'plex') return true;
+  if (Boolean(track.plex_key)) return true;
+  const fp = String(track.file_path || '');
+  if (fp.startsWith('plex://')) return true;
+  const tid = String(track.id || '');
+  if (tid.startsWith('plex://') || tid.startsWith('plex_') || tid.startsWith('host://plex_')) return true;
+  const hostId = String(track.host_id || '');
+  if (hostId.startsWith('plex_') || hostId.startsWith('plex://')) return true;
+  return false;
+}
+
+function isPlexOnlyPlayerSource() {
+  const stored = getStoredItem('plex_as_only_player_source');
+  if (stored !== null) return stored === 'true';
+  return Boolean(state.config && (state.config.plex_as_only_player_source || state.config.folder_source_for_creator_and_manager_only));
+}
+
 // --- Tonarr Host Helper Functions ---
 function getHostBaseUrl() {
   const url = (state.config && (state.config.tonarr_host_url || state.config.soundsphere_host_url)) || 
@@ -370,6 +389,7 @@ const elements = {
   plexStatusMsg: $('plexStatusMsg'),
   plexViaHostToggle: $('plexViaHostToggle'),
   preferPlexMetadataToggle: $('preferPlexMetadataToggle'),
+  plexAsOnlyPlayerSourceToggle: $('plexAsOnlyPlayerSourceToggle'),
   plexSectionSelect: $('plexSectionSelect'),
   tabBtnSources: $('tabBtnSources'),
   settingsSourcesGroup: $('settingsSourcesGroup'),
@@ -861,6 +881,8 @@ function saveAllSettings() {
   setStoredItem('plex_section', plexSection);
   setStoredItem('plex_via_host', plexViaHost ? 'true' : 'false');
   setStoredItem('prefer_plex_metadata', preferPlexMeta ? 'true' : 'false');
+  const plexAsOnly = elements.plexAsOnlyPlayerSourceToggle ? elements.plexAsOnlyPlayerSourceToggle.checked : (getStoredItem('plex_as_only_player_source') === 'true');
+  setStoredItem('plex_as_only_player_source', plexAsOnly ? 'true' : 'false');
   if (plexUrl && plexToken) {
     setStoredItem('plex_enabled', 'true');
   }
@@ -968,7 +990,8 @@ function syncConfigToBackend(immediate = false) {
         plex_token: elements.plexTokenInput ? elements.plexTokenInput.value.trim() : (state.config?.plex_token || ''),
         plex_section_id: elements.plexSectionSelect ? elements.plexSectionSelect.value : (state.config?.plex_section_id || ''),
         plex_via_host: elements.plexViaHostToggle ? elements.plexViaHostToggle.checked : (state.config?.plex_via_host || false),
-        prefer_plex_metadata: elements.preferPlexMetadataToggle ? elements.preferPlexMetadataToggle.checked : (state.config?.prefer_plex_metadata !== false)
+        prefer_plex_metadata: elements.preferPlexMetadataToggle ? elements.preferPlexMetadataToggle.checked : (state.config?.prefer_plex_metadata !== false),
+        plex_as_only_player_source: elements.plexAsOnlyPlayerSourceToggle ? elements.plexAsOnlyPlayerSourceToggle.checked : (state.config?.plex_as_only_player_source || false)
       };
 
       // 1. Local backend
@@ -1023,6 +1046,7 @@ function loadAllSettings() {
   const savedPlexToken = getStoredItem('plex_token');
   const savedPlexViaHost = getStoredItem('plex_via_host');
   const savedPreferPlex = getStoredItem('prefer_plex_metadata');
+  const savedPlexAsOnly = getStoredItem('plex_as_only_player_source');
   if (elements.plexUrlInput && savedPlexUrl) elements.plexUrlInput.value = savedPlexUrl;
   if (elements.plexTokenInput && savedPlexToken) elements.plexTokenInput.value = savedPlexToken;
   if (elements.plexViaHostToggle && savedPlexViaHost !== null) {
@@ -1030,6 +1054,9 @@ function loadAllSettings() {
   }
   if (elements.preferPlexMetadataToggle && savedPreferPlex !== null) {
     elements.preferPlexMetadataToggle.checked = savedPreferPlex !== 'false';
+  }
+  if (elements.plexAsOnlyPlayerSourceToggle && savedPlexAsOnly !== null) {
+    elements.plexAsOnlyPlayerSourceToggle.checked = savedPlexAsOnly === 'true';
   }
 
   // 5. Volume & Playback modes
@@ -1366,12 +1393,19 @@ function switchView(viewName, data = null, pushHistory = true) {
 function getFilteredTracks() {
   let list = state.tracks;
 
+  if (isPlexOnlyPlayerSource()) {
+    list = list.filter(t => isPlexTrack(t));
+    if (state.activeSource === 'local') {
+      state.activeSource = 'all';
+    }
+  }
+
   if (state.activeSource === 'host') {
     list = list.filter(t => isHostTrack(t));
   } else if (state.activeSource === 'plex') {
-    list = list.filter(t => (t.file_path && t.file_path.startsWith('plex://')) || (t.id && t.id.startsWith('plex://')) || t.source === 'plex');
+    list = list.filter(t => isPlexTrack(t));
   } else if (state.activeSource === 'local') {
-    list = list.filter(t => !isHostTrack(t) && !(t.file_path && t.file_path.startsWith('plex://')) && !(t.id && t.id.startsWith('plex://')) && t.source !== 'plex');
+    list = list.filter(t => !isHostTrack(t) && !isPlexTrack(t));
   }
 
   if (state.activeView === 'favorites') {
@@ -2809,9 +2843,10 @@ function updateBadgeCounts() {
   if (elements.countFavsBadge) elements.countFavsBadge.textContent = state.favorites.size;
   if (elements.countQueueBadge) elements.countQueueBadge.textContent = state.queue.length;
 
+  const isPlexOnly = isPlexOnlyPlayerSource();
   const hostCount = state.tracks.filter(t => isHostTrack(t)).length;
-  const plexCount = state.tracks.filter(t => (t.file_path && t.file_path.startsWith('plex://')) || (t.id && t.id.startsWith('plex://')) || t.source === 'plex').length;
-  const localCount = state.tracks.filter(t => !isHostTrack(t) && !(t.file_path && t.file_path.startsWith('plex://')) && !(t.id && t.id.startsWith('plex://')) && t.source !== 'plex').length;
+  const plexCount = state.tracks.filter(t => isPlexTrack(t)).length;
+  const localCount = isPlexOnly ? 0 : state.tracks.filter(t => !isHostTrack(t) && !isPlexTrack(t)).length;
   if (elements.countHostBadge) elements.countHostBadge.textContent = hostCount;
   if (elements.countPlexBadge) elements.countPlexBadge.textContent = plexCount;
   if (elements.countLocalBadge) elements.countLocalBadge.textContent = localCount;
@@ -3804,16 +3839,22 @@ function setupEventListeners() {
             year: t.year || null,
             track_no: t.track_no || null,
             file_path: t.file_path || `host://${tid}`,
-            source: 'tonarr_host',
+            source: t.source === 'plex' ? 'plex' : (t.plex_key ? 'plex' : 'tonarr_host'),
+            plex_key: t.plex_key || null,
             cover_url: `${hostUrl}/api/cover?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
             stream_url: `${hostUrl}/api/audio/stream?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
             lyrics_url: `${hostUrl}/api/lyrics?id=${encodeURIComponent(t.id || tid)}${tokenParam}`
           };
         });
 
-        // Filter out existing host tracks and merge
-        const nonHostTracks = state.tracks.filter(t => !isHostTrack(t));
-        state.tracks = [...nonHostTracks, ...mappedTracks];
+        const isPlexOnly = isPlexOnlyPlayerSource();
+        if (isPlexOnly) {
+          state.tracks = mappedTracks.filter(t => isPlexTrack(t));
+        } else {
+          // Filter out existing host tracks and merge
+          const nonHostTracks = state.tracks.filter(t => !isHostTrack(t));
+          state.tracks = [...nonHostTracks, ...mappedTracks];
+        }
 
         try {
           setStoredItem('host_tracks', JSON.stringify(mappedTracks));
@@ -4135,8 +4176,13 @@ function setupEventListeners() {
         if (res.ok) {
           const data = await res.json();
           if (data.tracks) {
-            const localTracks = state.tracks.filter(t => !(t.file_path && t.file_path.startsWith('plex://')) && !(t.id && t.id.startsWith('plex://')));
-            state.tracks = [...localTracks, ...data.tracks];
+            const isPlexOnly = isPlexOnlyPlayerSource();
+            if (isPlexOnly) {
+              state.tracks = data.tracks;
+            } else {
+              const localTracks = state.tracks.filter(t => !isPlexTrack(t));
+              state.tracks = [...localTracks, ...data.tracks];
+            }
             updateBadgeCounts();
             renderTracksTable();
             renderArtistsGrid();
@@ -4727,6 +4773,11 @@ async function removeDirectory(dir) {
 }
 
 async function scanMusicFolders() {
+  if (isPlexOnlyPlayerSource()) {
+    console.log('[Scan] Ignoriere lokale Musikordner, da Plex als einzige Quelle aktiv ist.');
+    if (elements.scanStatusMsg) elements.scanStatusMsg.textContent = 'Plex ist als einzige Quelle aktiv.';
+    return;
+  }
   if (elements.scanStatusMsg) elements.scanStatusMsg.textContent = '⏳ Mediathek wird gescannt...';
   showToast('🔍 Mediathek wird synchronisiert...');
   try {
@@ -4738,7 +4789,7 @@ async function scanMusicFolders() {
     if (res.ok) {
       const data = await res.json();
       const tracks = Array.isArray(data) ? data : (data.tracks || []);
-      state.tracks = tracks;
+      state.tracks = isPlexOnlyPlayerSource() ? tracks.filter(t => isPlexTrack(t)) : tracks;
       if (elements.scanStatusMsg) elements.scanStatusMsg.textContent = `✅ ${tracks.length} Songs eingelesen`;
       showToast(`✅ ${tracks.length} Songs erfolgreich synchronisiert!`);
       updateBadgeCounts();
@@ -4757,11 +4808,15 @@ async function scanMusicFolders() {
 }
 
 async function loadInitialTracks() {
+  const isPlexOnly = isPlexOnlyPlayerSource();
   try {
     const res = await fetch('/api/library/cache');
     if (res.ok) {
       const data = await res.json();
-      const tracks = (data.has_cache && data.cache && data.cache.tracks) ? data.cache.tracks : (Array.isArray(data.tracks) ? data.tracks : []);
+      let tracks = (data.has_cache && data.cache && data.cache.tracks) ? data.cache.tracks : (Array.isArray(data.tracks) ? data.tracks : []);
+      if (isPlexOnly) {
+        tracks = tracks.filter(t => isPlexTrack(t));
+      }
       if (tracks.length > 0) {
         state.tracks = tracks;
         updateBadgeCounts();
@@ -4769,10 +4824,25 @@ async function loadInitialTracks() {
         renderArtistsGrid();
         renderAlbumsGrid();
         updateAuthUI();
+        if (isPlexOnly) {
+          if (getHostBaseUrl()) syncHostLibrary().catch(() => {});
+          else if (state.config && state.config.plex_url) {
+            fetch(getPlexApiUrl('/api/plex/sync'), { method: 'POST' }).catch(() => {});
+          }
+        }
         return;
       }
     }
   } catch (e) {}
+
+  if (isPlexOnly) {
+    if (getHostBaseUrl()) {
+      syncHostLibrary().catch(() => {});
+    } else if (state.config && state.config.plex_url && state.config.plex_token) {
+      fetch(getPlexApiUrl('/api/plex/sync'), { method: 'POST' }).catch(() => {});
+    }
+    return;
+  }
 
   // If running on Android and offline / no server connection, load local smartphone audio files
   if (window.AndroidBridge && window.AndroidBridge.getLocalDeviceTracksJson && state.tracks.length === 0) {
@@ -8006,6 +8076,48 @@ if (elements.preferPlexMetadataToggle) {
     setStoredItem('prefer_plex_metadata', e.target.checked ? 'true' : 'false');
     saveAllSettings();
     showToast(e.target.checked ? 'Plex-Metadaten werden bevorzugt.' : 'Lokale ID3-Tags werden bevorzugt.');
+  });
+}
+
+if (elements.plexAsOnlyPlayerSourceToggle) {
+  elements.plexAsOnlyPlayerSourceToggle.addEventListener('change', async (e) => {
+    const val = e.target.checked;
+    setStoredItem('plex_as_only_player_source', val ? 'true' : 'false');
+    if (state.config) state.config.plex_as_only_player_source = val;
+    saveAllSettings();
+    syncConfigToBackend(true);
+
+    const hostBase = getHostBaseUrl();
+    if (hostBase) {
+      try {
+        await fetch(`${hostBase}/api/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plex_as_only_player_source: val,
+            folder_source_for_creator_and_manager_only: val
+          })
+        });
+      } catch (err) {}
+    }
+
+    if (val) {
+      state.tracks = state.tracks.filter(t => isPlexTrack(t));
+      if (state.activeSource === 'local') state.activeSource = 'all';
+      showToast('📺 Plex als einzige Player-Quelle aktiviert!');
+      if (elements.btnSyncPlexLibrary) {
+        elements.btnSyncPlexLibrary.click();
+      } else if (hostBase) {
+        syncHostLibrary().catch(() => {});
+      }
+    } else {
+      showToast('📁 Lokale Musikordner wieder für Player aktiviert.');
+      await scanMusicFolders();
+    }
+    updateBadgeCounts();
+    renderTracksTable();
+    renderArtistsGrid();
+    renderAlbumsGrid();
   });
 }
 
