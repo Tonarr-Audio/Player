@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SoundSphere Player</title>
+  <title>Tonarr Player</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -11,13 +11,20 @@
 </head>
 <body>
   <div class="app-root">
+    <!-- Global Ambient Cover Backdrop -->
+    <div class="global-cover-backdrop" id="globalCoverBackdrop">
+      <div class="global-cover-backdrop-layer back" id="globalCoverBackdropBack"></div>
+      <div class="global-cover-backdrop-layer front" id="globalCoverBackdropFront"></div>
+      <div class="global-cover-backdrop-overlay"></div>
+    </div>
+
     <!-- Top Header Bar -->
     <header class="top-navbar">
       <div class="brand-group">
         <div class="brand-logo">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
         </div>
-        <span class="brand-title">SoundSphere <span class="brand-badge">Player</span></span>
+        <span class="brand-title">Tonarr <span class="brand-badge">Player</span></span>
       </div>
 
       <div class="nav-history-group">
@@ -56,7 +63,7 @@
             </button>
             <button class="nav-item" id="navBtnHostSource">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-              <span>SoundSphere Host</span>
+              <span>Tonarr Host</span>
               <span class="nav-count" id="countHostBadge">0</span>
             </button>
             <button class="nav-item" id="navBtnPlexSource">
@@ -373,8 +380,8 @@
     <footer class="spotify-bottom-bar" id="spotifyBottomBar">
       <div class="sp-left">
         <div class="sp-cover" id="spCoverWrapper">
-          <img id="spCoverImgBack" class="sp-cover-layer back hidden" alt="Cover" />
-          <img id="spCoverImg" class="sp-cover-layer front hidden" alt="Cover" />
+          <img id="spCoverImgBack" class="sp-cover-layer back hidden" alt="Cover" crossorigin="anonymous" />
+          <img id="spCoverImg" class="sp-cover-layer front hidden" alt="Cover" crossorigin="anonymous" />
           <div id="spCoverFallback" class="sp-cover-fallback">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
           </div>
@@ -532,7 +539,7 @@
           <div class="settings-modal-badge-icon">⚙️</div>
           <div>
             <h2 class="modal-title" style="margin:0; font-size:1.3rem;">Einstellungen</h2>
-            <p style="margin:0; font-size:0.78rem; color:var(--text-muted);">Passe SoundSphere an deine Vorlieben an</p>
+            <p style="margin:0; font-size:0.78rem; color:var(--text-muted);">Passe Tonarr an deine Vorlieben an</p>
           </div>
         </div>
         <button class="btn-icon-tiny" id="btnCloseSettingsModal" title="Schließen">&times;</button>
@@ -541,184 +548,242 @@
       <div class="settings-layout">
         <!-- Settings Sidebar Navigation -->
         <div class="settings-tabs-sidebar">
-          <button class="settings-tab-btn active" data-tab="tabHost">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-            <span>SoundSphere Host</span>
-          </button>
-          <button class="settings-tab-btn" data-tab="tabPlex">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>
-            <span>Plex Server</span>
-          </button>
-          <button class="settings-tab-btn" data-tab="tabLocal">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-            <span>Lokale Musik</span>
-          </button>
-          <button class="settings-tab-btn" data-tab="tabTheme">
+          <!-- Expandable Sources Group -->
+          <div class="settings-nav-group" id="settingsSourcesGroup">
+            <button type="button" class="settings-tab-btn settings-group-header active" data-tab="tabSources" id="tabBtnSources">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                <span>Quellen</span>
+              </div>
+              <span class="group-toggle-arrow" id="sourcesGroupArrow">▾</span>
+            </button>
+            <div class="settings-subtabs" id="settingsSourcesSubtabs">
+              <button type="button" class="settings-subtab-btn active" data-source-target="sourceCardHost">
+                <span class="source-indicator host"></span>
+                <span>Tonarr Host</span>
+              </button>
+              <button type="button" class="settings-subtab-btn" data-source-target="sourceCardPlex">
+                <span class="source-indicator plex"></span>
+                <span>Plex Server</span>
+              </button>
+              <button type="button" class="settings-subtab-btn" data-source-target="sourceCardLocal">
+                <span class="source-indicator local"></span>
+                <span>Lokale Musik</span>
+              </button>
+            </div>
+          </div>
+
+          <button type="button" class="settings-tab-btn" data-tab="tabTheme">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a7 7 0 0 0 7 7c0 2-2 3-2 3s1 1 1 3a5 5 0 0 1-5 5c-3 0-5-2-5-5a7 7 0 0 1 4-6z"></path></svg>
             <span>Erscheinungsbild</span>
           </button>
-          <button class="settings-tab-btn" data-tab="tabEqualizer">
+          <button type="button" class="settings-tab-btn" data-tab="tabEqualizer">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
             <span>Equalizer</span>
           </button>
-          <button class="settings-tab-btn" data-tab="tabAbout">
+          <button type="button" class="settings-tab-btn" data-tab="tabAbout">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-            <span>Über SoundSphere</span>
+            <span>Über Tonarr</span>
           </button>
         </div>
 
         <!-- Settings Content Area -->
         <div class="settings-tab-content">
-          <!-- 0. TAB: SOUNDSPHERE HOST -->
-          <div class="settings-tab-pane active" id="tabHost">
-            <div class="settings-card">
-              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-                <div style="display:flex; align-items:center; gap:10px;">
+          <!-- 0. UNIFIED TAB: QUELLEN (Expandable Accordion Cards for Available Sources) -->
+          <div class="settings-tab-pane active" id="tabSources">
+            <!-- 0.1 SOURCE: TONARR HOST -->
+            <div class="sources-accordion-card" id="sourceCardHost">
+              <div class="sources-accordion-header" onclick="toggleSourceAccordion('sourceCardHost')">
+                <div style="display:flex; align-items:center; gap:12px;">
                   <div class="settings-icon-circle" style="background:rgba(139,92,246,0.15); color:#8b5cf6;">🖥️</div>
                   <div>
-                    <h3 class="settings-card-title">SoundSphere Host</h3>
-                    <p class="settings-card-desc">Verbinde deinen SoundSphere Host / Docker Server für Streaming & synchronisierte Lyrics</p>
+                    <h3 class="settings-card-title" style="margin:0; font-size:1.02rem;">Tonarr Host</h3>
+                    <p class="settings-card-desc" style="margin:2px 0 0 0;">Zentraler Musik- & Streaming-Server (ZimaOS / Docker)</p>
                   </div>
                 </div>
-                <span id="hostConnectionBadge" class="status-pill disconnected">🔴 Nicht verbunden</span>
-              </div>
-
-              <!-- Logged In / Connected State -->
-              <div id="hostConnectedContainer" style="display:none; flex-direction:column; gap:14px;">
-                <div class="settings-subcard">
-                  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-                    <div>
-                      <strong style="color:#8b5cf6; font-size:0.92rem;">Host Aktiv & Verbunden</strong>
-                      <div id="hostConnectedServerInfo" style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">URL: http://localhost:8765</div>
-                    </div>
-                    <div style="display:flex; gap:8px;">
-                      <button id="btnSyncHostLibrary" class="btn btn-primary btn-sm" style="background:#8b5cf6; color:#fff; font-weight:700;">
-                        <span>🔄 Songs synchronisieren</span>
-                      </button>
-                      <button id="btnDisconnectHost" class="btn btn-secondary btn-sm" style="color:#f87171; border-color:rgba(248,113,113,0.3);">
-                        <span>Trennen</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Setup & Configuration Form -->
-              <div id="hostConfigContainer" style="display:flex; flex-direction:column; gap:12px; margin-top:10px;">
-                <div style="display:flex; flex-direction:column; gap:10px; padding:14px; background:var(--bg-surface); border-radius:var(--radius-md); border:1px solid var(--border-color);">
-                  <label style="font-size:0.85rem; font-weight:600; color:#fff;">Server-Adresse (URL)</label>
-                  <input type="text" id="hostUrlInput" class="form-input" placeholder="http://localhost:8765 oder http://192.168.1.50:8765">
-                  <label style="font-size:0.85rem; font-weight:600; color:#fff; margin-top:4px;">API-Token (Optional)</label>
-                  <input type="password" id="hostTokenInput" class="form-input" placeholder="Optionaler Zugriffstoken">
-                  <div style="display:flex; gap:10px; margin-top:6px;">
-                    <button id="btnTestHostConnection" class="btn btn-primary" style="background:#8b5cf6; color:#fff; font-weight:700;">Verbindung testen & synchronisieren</button>
-                  </div>
-                </div>
-              </div>
-
-              <span id="hostStatusMsg" class="status-msg" style="margin-top:8px;"></span>
-            </div>
-          </div>
-
-          <!-- 1. TAB: PLEX SERVER -->
-          <div class="settings-tab-pane" id="tabPlex">
-            <div class="settings-card">
-              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
                 <div style="display:flex; align-items:center; gap:10px;">
+                  <span id="hostConnectionBadge" class="status-pill disconnected">🔴 Nicht verbunden</span>
+                  <svg class="sources-accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+              </div>
+              <div class="sources-accordion-body">
+                <!-- Logged In / Connected State -->
+                <div id="hostConnectedContainer" style="display:none; flex-direction:column; gap:14px;">
+                  <div class="settings-subcard">
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                      <div>
+                        <strong style="color:#8b5cf6; font-size:0.92rem;">Host Aktiv & Verbunden</strong>
+                        <div id="hostConnectedServerInfo" style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">URL: http://localhost:8765</div>
+                      </div>
+                      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button id="btnSyncHostLibrary" class="btn btn-primary btn-sm" style="background:#8b5cf6; color:#fff; font-weight:700;">
+                          <span>🔄 Songs synchronisieren</span>
+                        </button>
+                        <button id="btnDiscoverHostConnected" class="btn btn-secondary btn-sm" title="Netzwerk nach anderem Host scannen">
+                          <span>🔍 Host suchen</span>
+                        </button>
+                        <button id="btnDisconnectHost" class="btn btn-secondary btn-sm" style="color:#f87171; border-color:rgba(248,113,113,0.3);">
+                          <span>Trennen</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div id="hostDiscoveryResultsConnectedContainer" style="display:none; flex-direction:column; gap:8px;"></div>
+                </div>
+
+                <!-- Setup & Configuration Form -->
+                <div id="hostConfigContainer" style="display:flex; flex-direction:column; gap:12px;">
+                  <div style="display:flex; flex-direction:column; gap:10px; padding:14px; background:rgba(0,0,0,0.2); border-radius:var(--radius-md); border:1px solid var(--border-color);">
+                    <label style="font-size:0.85rem; font-weight:600; color:#fff;">Server-Adresse (URL)</label>
+                    <input type="text" id="hostUrlInput" class="form-input" placeholder="http://localhost:8765 oder http://192.168.1.50:8765">
+                    <label style="font-size:0.85rem; font-weight:600; color:#fff; margin-top:4px;">API-Token (Optional)</label>
+                    <input type="password" id="hostTokenInput" class="form-input" placeholder="Optionaler Zugriffstoken">
+                    <div style="display:flex; gap:10px; margin-top:6px; flex-wrap:wrap; align-items:center;">
+                      <button id="btnTestHostConnection" class="btn btn-primary" style="background:#8b5cf6; color:#fff; font-weight:700;">Verbindung testen & synchronisieren</button>
+                      <button id="btnDiscoverHost" type="button" class="btn btn-secondary" style="display:flex; align-items:center; gap:6px;">
+                        <span>🔍 Netzwerk nach Host scannen</span>
+                      </button>
+                    </div>
+                  </div>
+                  <!-- Discovery Results Container -->
+                  <div id="hostDiscoveryResultsContainer" style="display:none; flex-direction:column; gap:8px;"></div>
+                </div>
+                <span id="hostStatusMsg" class="status-msg" style="margin-top:8px;"></span>
+              </div>
+            </div>
+
+            <!-- 0.2 SOURCE: PLEX SERVER -->
+            <div class="sources-accordion-card" id="sourceCardPlex">
+              <div class="sources-accordion-header" onclick="toggleSourceAccordion('sourceCardPlex')">
+                <div style="display:flex; align-items:center; gap:12px;">
                   <div class="settings-icon-circle" style="background:rgba(229,160,13,0.15); color:#e5a00d;">📺</div>
                   <div>
-                    <h3 class="settings-card-title">Plex Media Server</h3>
-                    <p class="settings-card-desc">Verbinde deinen Heimserver für Musik-Streaming & Playlists</p>
+                    <h3 class="settings-card-title" style="margin:0; font-size:1.02rem;">Plex Media Server</h3>
+                    <p class="settings-card-desc" style="margin:2px 0 0 0;">Musik-Streaming, Playlists & Metadaten von Plex</p>
                   </div>
                 </div>
-                <span id="plexConnectionBadge" class="status-pill disconnected">🔴 Nicht verbunden</span>
-              </div>
-
-              <!-- Logged In State -->
-              <div id="plexConnectedContainer" style="display:none; flex-direction:column; gap:14px;">
-                <div class="settings-subcard">
-                  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-                    <div>
-                      <strong style="color:#e5a00d; font-size:0.92rem;">Server Aktiv</strong>
-                      <div id="plexConnectedServerInfo" style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">URL: Verbunden</div>
-                    </div>
-                    <div style="display:flex; gap:8px;">
-                      <button id="btnSyncPlexLibrary" class="btn btn-primary btn-sm" style="background:#e5a00d; color:#000; font-weight:700;">
-                        <span>🔄 Jetzt synchronisieren</span>
-                      </button>
-                      <button id="btnLogoutPlex" class="btn btn-secondary btn-sm" style="color:#f87171; border-color:rgba(248,113,113,0.3);">
-                        <span>Abmelden</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Plex Mediathek Dropdown Selector -->
-                <div class="settings-subcard" style="border-left:3px solid #e5a00d;">
-                  <label class="settings-label" style="display:flex; align-items:center; justify-content:space-between;">
-                    <span>📚 Plex Musik-Mediathek auswählen</span>
-                    <button id="btnRefreshPlexSections" class="btn-icon-tiny" title="Mediatheken aktualisieren">
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                    </button>
-                  </label>
-                  <p class="settings-desc" style="margin-top:2px; margin-bottom:10px;">Wähle die gewünschte Musik-Bibliothek von deinem Plex Server aus:</p>
-                  <div style="display:flex; gap:10px; align-items:center;">
-                    <select id="plexSectionSelect" class="form-select custom-select" style="flex:1;">
-                      <option value="">Lade Mediatheken...</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Logged Out State -->
-              <div id="plexLoggedOutContainer" style="display:flex; flex-direction:column; gap:12px; margin-top:10px;">
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                  <button id="btnLoginPlexOAuth" class="btn btn-primary" style="background:#e5a00d; color:#000; font-weight:700; padding:10px 20px;">
-                    <span>📺 Mit Plex anmelden (1-Klick)</span>
-                  </button>
-                  <button id="btnToggleManualPlex" class="btn btn-secondary btn-sm">Manuelle URL/Token</button>
-                </div>
-                <div id="manualPlexContainer" style="display:none; flex-direction:column; gap:10px; padding:12px; background:var(--bg-surface); border-radius:var(--radius-md); border:1px solid var(--border-color);">
-                  <input type="text" id="plexUrlInput" class="form-input" placeholder="Plex Server URL (z.B. http://192.168.178.50:32400)">
-                  <input type="password" id="plexTokenInput" class="form-input" placeholder="Plex Token (X-Plex-Token)">
-                  <button id="btnTestPlexConnection" class="btn btn-secondary" style="align-self:flex-start;">Verbindung speichern & testen</button>
-                </div>
-              </div>
-
-              <span id="plexStatusMsg" class="status-msg" style="margin-top:8px;"></span>
-            </div>
-          </div>
-
-          <!-- 2. TAB: LOKALE MUSIK -->
-          <div class="settings-tab-pane" id="tabLocal">
-            <div class="settings-card">
-              <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
                 <div style="display:flex; align-items:center; gap:10px;">
+                  <span id="plexConnectionBadge" class="status-pill disconnected">🔴 Nicht verbunden</span>
+                  <svg class="sources-accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+              </div>
+              <div class="sources-accordion-body">
+                <!-- Logged In State -->
+                <div id="plexConnectedContainer" style="display:none; flex-direction:column; gap:14px;">
+                  <div class="settings-subcard">
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                      <div>
+                        <strong style="color:#e5a00d; font-size:0.92rem;">Server Aktiv</strong>
+                        <div id="plexConnectedServerInfo" style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">URL: Verbunden</div>
+                      </div>
+                      <div style="display:flex; gap:8px;">
+                        <button id="btnSyncPlexLibrary" class="btn btn-primary btn-sm" style="background:#e5a00d; color:#000; font-weight:700;">
+                          <span>🔄 Songs & Playlists synchronisieren</span>
+                        </button>
+                        <button id="btnLogoutPlex" class="btn btn-secondary btn-sm" style="color:#f87171; border-color:rgba(248,113,113,0.3);">
+                          <span>Abmelden</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Plex Mediathek Dropdown Selector -->
+                  <div class="settings-subcard" style="border-left:3px solid #e5a00d;">
+                    <label class="settings-label" style="display:flex; align-items:center; justify-content:space-between;">
+                      <span>📚 Plex Musik-Mediathek auswählen</span>
+                      <button id="btnRefreshPlexSections" class="btn-icon-tiny" title="Mediatheken aktualisieren">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                      </button>
+                    </label>
+                    <p class="settings-desc" style="margin-top:2px; margin-bottom:10px;">Wähle die gewünschte Musik-Bibliothek von deinem Plex Server aus:</p>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                      <select id="plexSectionSelect" class="form-select custom-select" style="flex:1;">
+                        <option value="">Lade Mediatheken...</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Host-Sync & Metadata Preference Options -->
+                  <div class="settings-subcard" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                    <div>
+                      <strong style="display:block; color:#fff; font-size:0.86rem;">Plex über Tonarr Host synchronisieren</strong>
+                      <span style="font-size:0.75rem; color:var(--text-dim); display:block; margin-top:2px;">
+                        Synchronisiert Plex-Titel & Playlists zentral über den Host-Server, statt direkt im Player.
+                      </span>
+                    </div>
+                    <label class="eq-toggle-switch" style="flex-shrink:0;">
+                      <input type="checkbox" id="plexViaHostToggle">
+                      <span class="eq-toggle-slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="settings-subcard" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                    <div>
+                      <strong style="display:block; color:#fff; font-size:0.86rem;">Plex-Metadaten bevorzugen</strong>
+                      <span style="font-size:0.75rem; color:var(--text-dim); display:block; margin-top:2px;">
+                        Verwendet Titel, Künstler, Albumcover & Playlists von Plex vorrangig vor lokalen ID3-Tags.
+                      </span>
+                    </div>
+                    <label class="eq-toggle-switch" style="flex-shrink:0;">
+                      <input type="checkbox" id="preferPlexMetadataToggle" checked>
+                      <span class="eq-toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Logged Out State -->
+                <div id="plexLoggedOutContainer" style="display:flex; flex-direction:column; gap:12px;">
+                  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button id="btnLoginPlexOAuth" class="btn btn-primary" style="background:#e5a00d; color:#000; font-weight:700; padding:10px 20px;">
+                      <span>📺 Mit Plex anmelden (1-Klick)</span>
+                    </button>
+                    <button id="btnToggleManualPlex" class="btn btn-secondary btn-sm">Manuelle URL/Token</button>
+                  </div>
+                  <div id="manualPlexContainer" style="display:none; flex-direction:column; gap:10px; padding:12px; background:rgba(0,0,0,0.2); border-radius:var(--radius-md); border:1px solid var(--border-color);">
+                    <input type="text" id="plexUrlInput" class="form-input" placeholder="Plex Server URL (z.B. http://192.168.178.50:32400)">
+                    <input type="password" id="plexTokenInput" class="form-input" placeholder="Plex Token (X-Plex-Token)">
+                    <button id="btnTestPlexConnection" class="btn btn-secondary" style="align-self:flex-start;">Verbindung speichern & testen</button>
+                  </div>
+                </div>
+
+                <span id="plexStatusMsg" class="status-msg" style="margin-top:8px;"></span>
+              </div>
+            </div>
+
+            <!-- 0.3 SOURCE: LOKALE MUSIK -->
+            <div class="sources-accordion-card" id="sourceCardLocal">
+              <div class="sources-accordion-header" onclick="toggleSourceAccordion('sourceCardLocal')">
+                <div style="display:flex; align-items:center; gap:12px;">
                   <div class="settings-icon-circle" style="background:rgba(59,130,246,0.15); color:#3b82f6;">📁</div>
                   <div>
-                    <h3 class="settings-card-title">Lokale Musik-Ordner</h3>
-                    <p class="settings-card-desc">Verwalte deine lokalen Musik-Verzeichnisse auf diesem Computer</p>
+                    <h3 class="settings-card-title" style="margin:0; font-size:1.02rem;">Lokale Musik-Ordner</h3>
+                    <p class="settings-card-desc" style="margin:2px 0 0 0;">Verwalte lokale Audio-Verzeichnisse auf diesem Computer</p>
                   </div>
                 </div>
-                <button id="btnAddDirectoryBtn" class="btn btn-primary btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:15px; height:15px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                  <span>Ordner hinzufügen</span>
-                </button>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <button id="btnAddDirectoryBtn" class="btn btn-primary btn-sm" style="display:inline-flex; align-items:center; gap:6px;" onclick="event.stopPropagation();">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:15px; height:15px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    <span>Ordner hinzufügen</span>
+                  </button>
+                  <svg class="sources-accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
               </div>
+              <div class="sources-accordion-body">
+                <div class="directories-list-container" id="directoriesListContainer" style="display:flex; flex-direction:column; gap:8px;">
+                  <!-- Rendered dynamically -->
+                </div>
 
-              <div class="directories-list-container" id="directoriesListContainer" style="display:flex; flex-direction:column; gap:8px;">
-                <!-- Rendered dynamically -->
-              </div>
-
-              <div style="margin-top:14px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-                <span id="scanStatusMsg" class="status-msg" style="font-size:0.82rem; color:var(--text-dim);"></span>
-                <button id="btnRescanAllDirs" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px; height:14px;"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                  <span>Alle Ordner neu einlesen</span>
-                </button>
+                <div style="margin-top:14px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                  <span id="scanStatusMsg" class="status-msg" style="font-size:0.82rem; color:var(--text-dim);"></span>
+                  <button id="btnRescanAllDirs" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px; height:14px;"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    <span>Alle Ordner neu einlesen</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
+
 
           <!-- 3. TAB: THEME & FARBSCHEMATA -->
           <div class="settings-tab-pane" id="tabTheme">
@@ -727,53 +792,92 @@
                 <div class="settings-icon-circle" style="background:rgba(139,92,246,0.15); color:#8b5cf6;">🎨</div>
                 <div>
                   <h3 class="settings-card-title">Design & Farbthema</h3>
-                  <p class="settings-card-desc">Wähle dein bevorzugtes Farbschema für den SoundSphere Player</p>
+                  <p class="settings-card-desc">Wähle dein bevorzugtes Farbschema für den Tonarr Player</p>
                 </div>
               </div>
 
-              <div class="theme-selector-grid">
-                <button class="theme-btn active" data-theme="dark_obsidian">
-                  <span class="theme-swatch" style="background: linear-gradient(135deg, #090d16, #8b5cf6);"></span>
-                  <div style="text-align:left;">
-                    <strong style="display:block; color:#fff; font-size:0.88rem;">Dark Obsidian</strong>
-                    <span style="font-size:0.72rem; color:var(--text-dim);">Dunkles Lila (Standard)</span>
+              <!-- Custom Theme Dropdown with 2-Column Preview Grid -->
+              <div class="custom-theme-dropdown-container" id="themeDropdownContainer">
+                <label style="font-size:0.85rem; font-weight:600; color:#fff; display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                  <span>Farbschema (Design-Stil)</span>
+                </label>
+                
+                <!-- Dropdown Trigger Button showing currently active theme -->
+                <button type="button" class="theme-dropdown-trigger" id="themeDropdownTrigger">
+                  <div class="theme-dropdown-selected-preview" id="themeDropdownSelectedPreview">
+                    <span class="theme-swatch" id="themeDropdownSelectedSwatch" style="background: linear-gradient(135deg, #090d16, #8b5cf6);"></span>
+                    <div style="text-align:left;">
+                      <strong id="themeDropdownSelectedTitle" style="display:block; color:#fff; font-size:0.88rem;">Dark Obsidian</strong>
+                      <span id="themeDropdownSelectedDesc" style="font-size:0.72rem; color:var(--text-dim);">Dunkles Lila (Standard)</span>
+                    </div>
                   </div>
+                  <svg class="dropdown-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </button>
-                <button class="theme-btn" data-theme="midnight_violet">
-                  <span class="theme-swatch" style="background: linear-gradient(135deg, #110726, #c084fc);"></span>
-                  <div style="text-align:left;">
-                    <strong style="display:block; color:#fff; font-size:0.88rem;">Midnight Violet</strong>
-                    <span style="font-size:0.72rem; color:var(--text-dim);">Deep Neon Glow</span>
+
+                <!-- Dropdown Menu: 2 Buttons side-by-side with swatches -->
+                <div class="theme-dropdown-menu" id="themeDropdownMenu">
+                  <div class="theme-selector-grid">
+                    <button type="button" class="theme-btn active" data-theme="dark_obsidian">
+                      <span class="theme-swatch" style="background: linear-gradient(135deg, #090d16, #8b5cf6);"></span>
+                      <div style="text-align:left;">
+                        <strong style="display:block; color:#fff; font-size:0.88rem;">Dark Obsidian</strong>
+                        <span style="font-size:0.72rem; color:var(--text-dim);">Dunkles Lila (Standard)</span>
+                      </div>
+                    </button>
+                    <button type="button" class="theme-btn" data-theme="dynamic">
+                      <span class="theme-swatch" id="swatchDynamic" style="background: linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6, #10b981);"></span>
+                      <div style="text-align:left;">
+                        <strong style="display:block; color:#fff; font-size:0.88rem;">✨ Dynamisch</strong>
+                        <span style="font-size:0.72rem; color:var(--text-dim);">Passt sich dem Cover an</span>
+                      </div>
+                    </button>
+                    <button type="button" class="theme-btn" data-theme="midnight_violet">
+                      <span class="theme-swatch" style="background: linear-gradient(135deg, #110726, #c084fc);"></span>
+                      <div style="text-align:left;">
+                        <strong style="display:block; color:#fff; font-size:0.88rem;">Midnight Violet</strong>
+                        <span style="font-size:0.72rem; color:var(--text-dim);">Deep Neon Glow</span>
+                      </div>
+                    </button>
+                    <button type="button" class="theme-btn" data-theme="obsidian_emerald">
+                      <span class="theme-swatch" style="background: linear-gradient(135deg, #061e16, #10b981);"></span>
+                      <div style="text-align:left;">
+                        <strong style="display:block; color:#fff; font-size:0.88rem;">Emerald Dark</strong>
+                        <span style="font-size:0.72rem; color:var(--text-dim);">Smaragdgrün</span>
+                      </div>
+                    </button>
+                    <button type="button" class="theme-btn" data-theme="sunset_amber">
+                      <span class="theme-swatch" style="background: linear-gradient(135deg, #1f1105, #f59e0b);"></span>
+                      <div style="text-align:left;">
+                        <strong style="display:block; color:#fff; font-size:0.88rem;">Sunset Amber</strong>
+                        <span style="font-size:0.72rem; color:var(--text-dim);">Warmes Gold / Bernstein</span>
+                      </div>
+                    </button>
+                    <button type="button" class="theme-btn" data-theme="snow_white">
+                      <span class="theme-swatch" style="background: linear-gradient(135deg, #f8fafc, #6366f1);"></span>
+                      <div style="text-align:left;">
+                        <strong style="display:block; color:#fff; font-size:0.88rem;">Snow Light</strong>
+                        <span style="font-size:0.72rem; color:var(--text-dim);">Helles Design</span>
+                      </div>
+                    </button>
                   </div>
-                </button>
-                <button class="theme-btn" data-theme="obsidian_emerald">
-                  <span class="theme-swatch" style="background: linear-gradient(135deg, #061e16, #10b981);"></span>
-                  <div style="text-align:left;">
-                    <strong style="display:block; color:#fff; font-size:0.88rem;">Emerald Dark</strong>
-                    <span style="font-size:0.72rem; color:var(--text-dim);">Smaragdgrün</span>
+                </div>
+              </div>
+
+              <!-- Cover als Hintergrund Toggle -->
+              <div class="settings-subcard" style="display:flex; align-items:center; justify-content:space-between; gap:14px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <div class="settings-icon-circle" style="background:rgba(59,130,246,0.15); color:#3b82f6; width:38px; height:38px; font-size:1.1rem;">🖼️</div>
+                  <div>
+                    <strong style="display:block; color:#fff; font-size:0.88rem;">Cover als Hintergrund</strong>
+                    <span style="font-size:0.75rem; color:var(--text-dim); display:block; max-width:440px; margin-top:2px;">
+                      Blendet das Albumcover des aktuellen Titels mit weichem Unschärfe-Filter (Blur) atmosphärisch als Hintergrund im gesamten Player ein.
+                    </span>
                   </div>
-                </button>
-                <button class="theme-btn" data-theme="sunset_amber">
-                  <span class="theme-swatch" style="background: linear-gradient(135deg, #1f1105, #f59e0b);"></span>
-                  <div style="text-align:left;">
-                    <strong style="display:block; color:#fff; font-size:0.88rem;">Sunset Amber</strong>
-                    <span style="font-size:0.72rem; color:var(--text-dim);">Warmes Gold / Bernstein</span>
-                  </div>
-                </button>
-                <button class="theme-btn" data-theme="dynamic">
-                  <span class="theme-swatch" style="background: linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6, #10b981);"></span>
-                  <div style="text-align:left;">
-                    <strong style="display:block; color:#fff; font-size:0.88rem;">✨ Dynamisch</strong>
-                    <span style="font-size:0.72rem; color:var(--text-dim);">Passt sich dem Cover an</span>
-                  </div>
-                </button>
-                <button class="theme-btn" data-theme="snow_white">
-                  <span class="theme-swatch" style="background: linear-gradient(135deg, #f8fafc, #6366f1);"></span>
-                  <div style="text-align:left;">
-                    <strong style="display:block; color:#fff; font-size:0.88rem;">Snow Light</strong>
-                    <span style="font-size:0.72rem; color:var(--text-dim);">Helles Design</span>
-                  </div>
-                </button>
+                </div>
+                <label class="eq-toggle-switch" style="flex-shrink:0;">
+                  <input type="checkbox" id="ambientCoverBgToggle">
+                  <span class="eq-toggle-slider"></span>
+                </label>
               </div>
             </div>
           </div>
@@ -798,8 +902,34 @@
                     <option value="pop">Pop ✨</option>
                     <option value="electronic">Electronic ⚡</option>
                     <option value="acoustic">Acoustic 🎻</option>
+                    <option value="custom">Benutzerdefiniert 🎛️</option>
                   </select>
                   <button id="btnResetEq" class="btn btn-secondary btn-sm">Reset</button>
+                </div>
+              </div>
+
+              <!-- Extra DSP & Dynamics Controls Card -->
+              <div class="eq-dynamics-bar">
+                <!-- Preamp / Grundlautstärke -->
+                <div class="eq-dynamics-item">
+                  <div class="eq-dynamics-header">
+                    <span class="eq-dynamics-title">🔊 Grundlautstärke (Preamp)</span>
+                    <span id="eqPreampValue" class="eq-preamp-badge">0.0 dB</span>
+                  </div>
+                  <input type="range" id="eqPreampSlider" min="-12" max="6" step="0.5" value="0" class="eq-preamp-range">
+                  <span class="eq-dynamics-desc">Reduziert Masterpegel bei Anhebung von Frequenzen</span>
+                </div>
+
+                <!-- Lautstärke-Normalisierung & Anti-Clipping Limiter -->
+                <div class="eq-dynamics-item">
+                  <div class="eq-dynamics-header">
+                    <span class="eq-dynamics-title">🛡️ Lautstärke-Normalisierung</span>
+                    <label class="eq-toggle-switch">
+                      <input type="checkbox" id="eqLimiterToggle" checked>
+                      <span class="eq-toggle-slider"></span>
+                    </label>
+                  </div>
+                  <span class="eq-dynamics-desc">Anti-Clipping DSP-Limiter: Verhindert Übersteuern & Verzerrungen bei aktiven EQ-Bändern</span>
                 </div>
               </div>
 
@@ -813,7 +943,7 @@
           <div class="settings-tab-pane" id="tabAbout">
             <div class="settings-card" style="text-align:center; padding:32px 20px;">
               <div style="font-size:3rem; margin-bottom:12px;">🎵</div>
-              <h2 style="margin:0 0 6px 0; font-size:1.4rem; font-weight:800; color:#fff;">SoundSphere Player</h2>
+              <h2 style="margin:0 0 6px 0; font-size:1.4rem; font-weight:800; color:#fff;">Tonarr Player</h2>
               <p style="margin:0 0 16px 0; font-size:0.85rem; color:var(--text-muted);">Hi-Res Music Streaming & AI Lyrics Studio</p>
               
               <div style="display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:rgba(255,255,255,0.06); border-radius:var(--radius-full); font-size:0.8rem; margin-bottom:20px;">
@@ -822,7 +952,7 @@
               </div>
 
               <div style="display:flex; justify-content:center; gap:12px;">
-                <a href="https://github.com/NoahYTK2/SoundSphere-AIO" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;">
+                <a href="https://github.com/Tonarr-Audio" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;">
                   <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
                   <span>GitHub Repository</span>
                 </a>
@@ -908,7 +1038,7 @@
     <div class="fs-top-bar">
       <div class="fs-brand">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-        <span>SoundSphere</span>
+        <span>Tonarr</span>
       </div>
       <div class="fs-top-actions" style="display:flex; align-items:center; gap:8px;">
         <button class="btn-icon-tiny fs-screen-btn" id="toggleScreenFullscreenBtn" title="Vollbildmodus (F11)">
@@ -924,8 +1054,8 @@
     <div class="fs-main-content" id="fsMainContent">
       <div class="fs-cover-meta-col" id="fsCoverMetaCol">
         <div class="fs-artwork-container" id="fsArtworkContainer">
-          <img id="fsCoverImgBack" class="fs-cover-layer back hidden" alt="Cover" />
-          <img id="fsCoverImg" class="fs-cover-layer front hidden" alt="Cover" />
+          <img id="fsCoverImgBack" class="fs-cover-layer back hidden" alt="Cover" crossorigin="anonymous" />
+          <img id="fsCoverImg" class="fs-cover-layer front hidden" alt="Cover" crossorigin="anonymous" />
           <div id="fsCoverFallback" class="fs-cover-fallback">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
           </div>

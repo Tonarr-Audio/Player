@@ -1,4 +1,4 @@
-// --- SoundSphere Player JavaScript Engine ---
+// --- Tonarr Player JavaScript Engine ---
 const state = {
   tracks: [],
   playlists: [],
@@ -41,20 +41,76 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// --- SoundSphere Host Helper Functions ---
+// --- Storage Helpers with Seamless Tonarr & SoundSphere Compatibility ---
+function getStoredItem(key) {
+  return localStorage.getItem(`tonarr_${key}`) ?? localStorage.getItem(`soundsphere_${key}`);
+}
+function setStoredItem(key, val) {
+  try {
+    localStorage.setItem(`tonarr_${key}`, val);
+    localStorage.setItem(`soundsphere_${key}`, val);
+  } catch (_) {}
+}
+function removeStoredItem(key) {
+  try {
+    localStorage.removeItem(`tonarr_${key}`);
+    localStorage.removeItem(`soundsphere_${key}`);
+  } catch (_) {}
+}
+
+function isHostTrack(track) {
+  if (!track) return false;
+  return track.source === 'tonarr_host' || track.source === 'soundsphere_host' ||
+         (track.file_path && track.file_path.startsWith('host://')) ||
+         (track.id && String(track.id).startsWith('host://'));
+}
+
+// --- Tonarr Host Helper Functions ---
 function getHostBaseUrl() {
-  const url = (state.config && state.config.soundsphere_host_url) || localStorage.getItem('soundsphere_host_url') || '';
+  const url = (state.config && (state.config.tonarr_host_url || state.config.soundsphere_host_url)) || 
+              getStoredItem('host_url') || '';
   return url.trim().replace(/\/+$/, '');
 }
 
 function getHostToken() {
-  return (state.config && state.config.soundsphere_host_token) || localStorage.getItem('soundsphere_host_token') || '';
+  return (state.config && (state.config.tonarr_host_token || state.config.soundsphere_host_token)) || 
+         getStoredItem('host_token') || '';
 }
+
+function getApiEndpoint(endpoint) {
+  const hostBase = getHostBaseUrl();
+  if (hostBase) {
+    const sep = endpoint.startsWith('/') ? '' : '/';
+    const token = getHostToken();
+    const tokenParam = token ? (endpoint.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`) : '';
+    return `${hostBase}${sep}${endpoint}${tokenParam}`;
+  }
+  return endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+}
+window.getApiEndpoint = getApiEndpoint;
+
+function getPlexApiUrl(endpoint) {
+  const hostBase = getHostBaseUrl();
+  const plexViaHost = (elements.plexViaHostToggle && elements.plexViaHostToggle.checked) || 
+                      (state.config && state.config.plex_via_host) || 
+                      (getStoredItem('plex_via_host') === 'true') ||
+                      Boolean(hostBase && !(elements.plexUrlInput && elements.plexUrlInput.value.trim()));
+
+  if (hostBase && plexViaHost) {
+    const sep = endpoint.startsWith('/') ? '' : '/';
+    const token = getHostToken();
+    const tokenParam = token ? (endpoint.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`) : '';
+    return `${hostBase}${sep}${endpoint}${tokenParam}`;
+  }
+  return endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+}
+window.getPlexApiUrl = getPlexApiUrl;
+
 
 function getTrackCoverUrl(track) {
   if (!track) return '';
   if (track.cover_url) return track.cover_url;
-  const isHost = track.source === 'soundsphere_host' || (track.file_path && track.file_path.startsWith('host://')) || (track.id && String(track.id).startsWith('host://'));
+  const isHost = isHostTrack(track);
   const hostBase = getHostBaseUrl();
   if (isHost && hostBase) {
     const token = getHostToken();
@@ -70,7 +126,7 @@ function getTrackStreamUrl(track) {
   if (!track) return '';
   if (track.stream_url) return track.stream_url;
   if (track.file_path && track.file_path.startsWith('content://')) return track.file_path;
-  const isHost = track.source === 'soundsphere_host' || (track.file_path && track.file_path.startsWith('host://')) || (track.id && String(track.id).startsWith('host://'));
+  const isHost = isHostTrack(track);
   const hostBase = getHostBaseUrl();
   if (isHost && hostBase) {
     const token = getHostToken();
@@ -294,7 +350,12 @@ const elements = {
   btnTestHostConnection: $('btnTestHostConnection'),
   btnSyncHostLibrary: $('btnSyncHostLibrary'),
   btnDisconnectHost: $('btnDisconnectHost'),
+  btnDiscoverHost: $('btnDiscoverHost'),
+  btnDiscoverHostConnected: $('btnDiscoverHostConnected'),
+  hostDiscoveryResultsContainer: $('hostDiscoveryResultsContainer'),
+  hostDiscoveryResultsConnectedContainer: $('hostDiscoveryResultsConnectedContainer'),
   hostStatusMsg: $('hostStatusMsg'),
+  plexConnectionBadge: $('plexConnectionBadge'),
   plexLoggedOutContainer: $('plexLoggedOutContainer'),
   plexConnectedContainer: $('plexConnectedContainer'),
   plexConnectedServerInfo: $('plexConnectedServerInfo'),
@@ -307,6 +368,11 @@ const elements = {
   plexTokenInput: $('plexTokenInput'),
   btnTestPlexConnection: $('btnTestPlexConnection'),
   plexStatusMsg: $('plexStatusMsg'),
+  plexViaHostToggle: $('plexViaHostToggle'),
+  preferPlexMetadataToggle: $('preferPlexMetadataToggle'),
+  plexSectionSelect: $('plexSectionSelect'),
+  tabBtnSources: $('tabBtnSources'),
+  settingsSourcesGroup: $('settingsSourcesGroup'),
   spotifyLoggedOutContainer: $('spotifyLoggedOutContainer'),
   spotifyConnectedContainer: $('spotifyConnectedContainer'),
   spotifyConnectedUserInfo: $('spotifyConnectedUserInfo'),
@@ -323,6 +389,21 @@ const elements = {
   eqPresetSelect: $('eqPresetSelect'),
   btnResetEq: $('btnResetEq'),
   eqSlidersContainer: $('eqSlidersContainer'),
+  eqPreampSlider: $('eqPreampSlider'),
+  eqPreampValue: $('eqPreampValue'),
+  eqLimiterToggle: $('eqLimiterToggle'),
+
+  themeDropdownContainer: $('themeDropdownContainer'),
+  themeDropdownTrigger: $('themeDropdownTrigger'),
+  themeDropdownSelectedSwatch: $('themeDropdownSelectedSwatch'),
+  themeDropdownSelectedTitle: $('themeDropdownSelectedTitle'),
+  themeDropdownSelectedDesc: $('themeDropdownSelectedDesc'),
+  themeDropdownMenu: $('themeDropdownMenu'),
+  swatchDynamic: $('swatchDynamic'),
+  ambientCoverBgToggle: $('ambientCoverBgToggle'),
+  globalCoverBackdrop: $('globalCoverBackdrop'),
+  globalCoverBackdropFront: $('globalCoverBackdropFront'),
+  globalCoverBackdropBack: $('globalCoverBackdropBack'),
 
   importPlaylistsModal: $('importPlaylistsModal'),
   importPlaylistsBackdrop: $('importPlaylistsBackdrop'),
@@ -371,17 +452,60 @@ function formatDuration(sec) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+// --- Theme Metadata & Descriptions ---
+const THEME_METADATA = {
+  dark_obsidian: {
+    title: 'Dark Obsidian',
+    desc: 'Dunkles Lila (Standard)',
+    swatchStyle: 'background: linear-gradient(135deg, #090d16, #8b5cf6);'
+  },
+  dynamic: {
+    title: '✨ Dynamisch',
+    desc: 'Passt sich dem Cover an',
+    swatchStyle: 'background: linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6, #10b981);'
+  },
+  midnight_violet: {
+    title: 'Midnight Violet',
+    desc: 'Deep Neon Glow',
+    swatchStyle: 'background: linear-gradient(135deg, #110726, #c084fc);'
+  },
+  obsidian_emerald: {
+    title: 'Emerald Dark',
+    desc: 'Smaragdgrün',
+    swatchStyle: 'background: linear-gradient(135deg, #061e16, #10b981);'
+  },
+  sunset_amber: {
+    title: 'Sunset Amber',
+    desc: 'Warmes Gold / Bernstein',
+    swatchStyle: 'background: linear-gradient(135deg, #1f1105, #f59e0b);'
+  },
+  snow_white: {
+    title: 'Snow Light',
+    desc: 'Helles Design',
+    swatchStyle: 'background: linear-gradient(135deg, #f8fafc, #6366f1);'
+  }
+};
+
 // --- Theme Management & Dynamic Palette Extractor ---
 function setTheme(themeName) {
   state.theme = themeName;
   document.documentElement.setAttribute('data-theme', themeName);
-  localStorage.setItem('soundsphere_theme', themeName);
+  setStoredItem('theme', themeName);
+
+  // Update theme trigger preview in custom dropdown
+  const meta = THEME_METADATA[themeName] || THEME_METADATA.dark_obsidian;
+  if (elements.themeDropdownSelectedTitle) elements.themeDropdownSelectedTitle.textContent = meta.title;
+  if (elements.themeDropdownSelectedDesc) elements.themeDropdownSelectedDesc.textContent = meta.desc;
+  if (elements.themeDropdownSelectedSwatch) elements.themeDropdownSelectedSwatch.style.cssText = meta.swatchStyle;
+
   document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.classList.toggle('active', btn.getAttribute('data-theme') === themeName);
   });
 
   if (themeName === 'dynamic') {
-    if (elements.spCoverImg && elements.spCoverImg.complete && elements.spCoverImg.naturalWidth > 0 && !elements.spCoverImg.classList.contains('hidden')) {
+    if (state.selectedTrack) {
+      applyDynamicThemeFromImage(getTrackCoverUrl(state.selectedTrack) || state.selectedTrack);
+    } else if (elements.spCoverImg && elements.spCoverImg.src && !elements.spCoverImg.classList.contains('hidden')) {
       applyDynamicThemeFromImage(elements.spCoverImg);
     }
   } else {
@@ -389,93 +513,218 @@ function setTheme(themeName) {
   }
 }
 
-function applyDynamicThemeFromImage(img) {
-  if (state.theme !== 'dynamic' || !img || !img.complete || img.naturalWidth === 0) return;
-  try {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = 64;
-    canvas.height = 64;
-    ctx.drawImage(img, 0, 0, 64, 64);
-    const imgData = ctx.getImageData(0, 0, 64, 64).data;
-    
-    let totalR = 0, totalG = 0, totalB = 0, count = 0;
-    
-    for (let i = 0; i < imgData.length; i += 16) {
-      const r = imgData[i];
-      const g = imgData[i + 1];
-      const b = imgData[i + 2];
-      const a = imgData[i + 3];
-      if (a < 128) continue;
-      
-      // Ignore extreme near-pitch-black and near-pure-white noise
-      const brightness = (r + g + b) / 3;
-      if (brightness < 12 || brightness > 248) continue;
+// --- Ambient Cover Background (Cover als Hintergrund) ---
+let isAmbientCoverBgEnabled = false;
 
-      totalR += r;
-      totalG += g;
-      totalB += b;
-      count++;
+function setAmbientCoverBg(enabled, shouldSync = true) {
+  isAmbientCoverBgEnabled = !!enabled;
+  document.body.classList.toggle('ambient-cover-bg', isAmbientCoverBgEnabled);
+  setStoredItem('ambient_cover_bg', isAmbientCoverBgEnabled ? 'true' : 'false');
+  if (elements.ambientCoverBgToggle) {
+    elements.ambientCoverBgToggle.checked = isAmbientCoverBgEnabled;
+  }
+  if (isAmbientCoverBgEnabled) {
+    const track = state.selectedTrack || (state.queue && state.queue[state.queueIndex]);
+    const coverUrl = track ? getTrackCoverUrl(track) : (elements.spCoverImg && elements.spCoverImg.src && !elements.spCoverImg.src.includes('data:image/svg') ? elements.spCoverImg.src : '');
+    if (coverUrl) {
+      updateGlobalCoverBackdrop(coverUrl);
     }
+  } else {
+    updateGlobalCoverBackdrop(null);
+  }
+  if (shouldSync && typeof syncConfigToBackend === 'function') {
+    syncConfigToBackend();
+  }
+}
 
-    if (count === 0) {
-      // Fallback if full monochrome / transparent
-      for (let i = 0; i < imgData.length; i += 16) {
-        totalR += imgData[i];
-        totalG += imgData[i + 1];
-        totalB += imgData[i + 2];
-        count++;
-      }
+function updateGlobalCoverBackdrop(coverUrl) {
+  if (!isAmbientCoverBgEnabled) {
+    if (elements.globalCoverBackdropFront) elements.globalCoverBackdropFront.style.backgroundImage = 'none';
+    if (elements.globalCoverBackdropBack) elements.globalCoverBackdropBack.style.backgroundImage = 'none';
+    return;
+  }
+  if (!coverUrl) return;
+  crossfadeBackdrop(elements.globalCoverBackdropFront, elements.globalCoverBackdropBack, coverUrl);
+}
+
+function applyDynamicThemeFromImage(imgOrUrl) {
+  if (state.theme !== 'dynamic') return;
+
+  function fallbackDynamicTheme() {
+    const track = state.selectedTrack;
+    if (!track) return;
+    const str = `${track.title || ''} ${track.artist || ''} ${track.album || ''}`;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0;
     }
+    const hue = Math.abs(hash) % 360;
+    const root = document.documentElement;
+    root.style.setProperty('--bg-base', `hsl(${hue}, 26%, 7%)`);
+    root.style.setProperty('--bg-surface', `hsla(${hue}, 24%, 13%, 0.75)`);
+    root.style.setProperty('--bg-surface-hover', `hsla(${hue}, 28%, 20%, 0.82)`);
+    root.style.setProperty('--bg-sidebar', `hsla(${hue}, 24%, 9%, 0.90)`);
+    root.style.setProperty('--bg-player-bar', `hsla(${hue}, 28%, 8%, 0.96)`);
+    root.style.setProperty('--border-color', `hsla(${hue}, 24%, 70%, 0.1)`);
+    root.style.setProperty('--border-color-light', `hsla(${hue}, 24%, 80%, 0.18)`);
+    root.style.setProperty('--primary', `hsl(${hue}, 70%, 52%)`);
+    root.style.setProperty('--primary-hover', `hsl(${hue}, 70%, 44%)`);
+    root.style.setProperty('--primary-light', `hsl(${hue}, 60%, 68%)`);
+    root.style.setProperty('--primary-glow', `hsla(${hue}, 70%, 52%, 0.42)`);
+  }
 
-    const avgR = Math.round(totalR / Math.max(1, count));
-    const avgG = Math.round(totalG / Math.max(1, count));
-    const avgB = Math.round(totalB / Math.max(1, count));
+  function applyPaletteFromRgb(avgR, avgG, avgB) {
     const hsl = rgbToHsl(avgR, avgG, avgB);
-
     let dominantHue = Math.round(hsl.h * 360);
     let satPct = Math.round(hsl.s * 100);
     let lightPct = Math.round(hsl.l * 100);
 
     const root = document.documentElement;
 
-    // Monochrome / Black & White cover handling (satPct < 8)
-    if (satPct < 8) {
-      root.style.setProperty('--bg-base', '#0b0b0d');
-      root.style.setProperty('--bg-surface', 'rgba(28, 28, 32, 0.72)');
-      root.style.setProperty('--bg-surface-hover', 'rgba(45, 45, 50, 0.82)');
-      root.style.setProperty('--bg-sidebar', 'rgba(18, 18, 20, 0.88)');
-      root.style.setProperty('--bg-player-bar', 'rgba(15, 15, 17, 0.95)');
-      root.style.setProperty('--border-color', 'rgba(255, 255, 255, 0.09)');
-      root.style.setProperty('--border-color-light', 'rgba(255, 255, 255, 0.18)');
+    if (satPct < 10) {
+      // True monochrome (neutral grayscale) theme for black & white or near-monochrome covers
+      root.style.setProperty('--bg-base', '#08080a');
+      root.style.setProperty('--bg-surface', 'rgba(24, 24, 27, 0.75)');
+      root.style.setProperty('--bg-surface-hover', 'rgba(39, 39, 42, 0.85)');
+      root.style.setProperty('--bg-sidebar', 'rgba(13, 13, 15, 0.90)');
+      root.style.setProperty('--bg-player-bar', 'rgba(10, 10, 12, 0.96)');
+      root.style.setProperty('--border-color', 'rgba(255, 255, 255, 0.08)');
+      root.style.setProperty('--border-color-light', 'rgba(255, 255, 255, 0.16)');
 
-      root.style.setProperty('--primary', '#e4e4e7');
-      root.style.setProperty('--primary-hover', '#fafafa');
-      root.style.setProperty('--primary-light', '#ffffff');
-      root.style.setProperty('--primary-glow', 'rgba(255, 255, 255, 0.22)');
+      // Balanced silver / neutral zinc primary: capped at 48% lightness so white text & icons (#fff) on buttons are 100% readable
+      root.style.setProperty('--primary', 'hsl(0, 0%, 48%)');
+      root.style.setProperty('--primary-hover', 'hsl(0, 0%, 38%)');
+      root.style.setProperty('--primary-light', 'hsl(0, 0%, 66%)');
+      root.style.setProperty('--primary-glow', 'rgba(255, 255, 255, 0.15)');
       return;
     }
 
-    // Colored cover handling: dynamic natural hue and proportional saturation
-    const baseSat = Math.min(satPct, 38);
-    const accentSat = Math.min(100, Math.max(satPct, Math.round(satPct * 1.25)));
-    const accentLight = Math.min(68, Math.max(48, lightPct > 65 ? lightPct - 10 : (lightPct < 35 ? lightPct + 25 : lightPct + 6)));
+    const baseSat = Math.min(satPct, 36);
+    const accentSat = Math.min(95, Math.max(satPct, Math.round(satPct * 1.2)));
+
+    // Strictly cap max lightness at 52% so white text / button icons remain high contrast
+    let targetLight = lightPct > 60 ? 50 : (lightPct < 35 ? lightPct + 22 : lightPct + 4);
+    const accentLight = Math.min(52, Math.max(44, targetLight));
 
     root.style.setProperty('--bg-base', `hsl(${dominantHue}, ${baseSat}%, 7%)`);
-    root.style.setProperty('--bg-surface', `hsla(${dominantHue}, ${Math.min(baseSat, 32)}%, 14%, 0.72)`);
-    root.style.setProperty('--bg-surface-hover', `hsla(${dominantHue}, ${Math.min(baseSat, 36)}%, 22%, 0.8)`);
-    root.style.setProperty('--bg-sidebar', `hsla(${dominantHue}, ${baseSat}%, 9%, 0.88)`);
-    root.style.setProperty('--bg-player-bar', `hsla(${dominantHue}, ${Math.min(baseSat + 5, 42)}%, 8%, 0.95)`);
+    root.style.setProperty('--bg-surface', `hsla(${dominantHue}, ${Math.min(baseSat, 28)}%, 13%, 0.75)`);
+    root.style.setProperty('--bg-surface-hover', `hsla(${dominantHue}, ${Math.min(baseSat, 32)}%, 20%, 0.82)`);
+    root.style.setProperty('--bg-sidebar', `hsla(${dominantHue}, ${baseSat}%, 9%, 0.90)`);
+    root.style.setProperty('--bg-player-bar', `hsla(${dominantHue}, ${Math.min(baseSat + 4, 36)}%, 8%, 0.96)`);
     root.style.setProperty('--border-color', `hsla(${dominantHue}, ${baseSat}%, 70%, 0.1)`);
     root.style.setProperty('--border-color-light', `hsla(${dominantHue}, ${baseSat}%, 80%, 0.18)`);
 
     root.style.setProperty('--primary', `hsl(${dominantHue}, ${accentSat}%, ${accentLight}%)`);
-    root.style.setProperty('--primary-hover', `hsl(${dominantHue}, ${accentSat}%, ${Math.max(38, accentLight - 8)}%)`);
-    root.style.setProperty('--primary-light', `hsl(${dominantHue}, ${Math.max(25, accentSat - 10)}%, ${Math.min(85, accentLight + 16)}%)`);
-    root.style.setProperty('--primary-glow', `hsla(${dominantHue}, ${accentSat}%, ${accentLight}%, 0.45)`);
-  } catch (err) {
-    console.warn('Dynamic theme extraction fallback:', err);
+    root.style.setProperty('--primary-hover', `hsl(${dominantHue}, ${accentSat}%, ${Math.max(36, accentLight - 8)}%)`);
+    root.style.setProperty('--primary-light', `hsl(${dominantHue}, ${Math.max(20, accentSat - 12)}%, ${Math.min(68, accentLight + 14)}%)`);
+    root.style.setProperty('--primary-glow', `hsla(${dominantHue}, ${accentSat}%, ${accentLight}%, 0.42)`);
+
+    // Live update dynamic swatch preview in dropdown
+    if (elements.swatchDynamic) {
+      elements.swatchDynamic.style.background = `hsl(${dominantHue}, ${accentSat}%, ${accentLight}%)`;
+    }
+    if (elements.themeDropdownSelectedSwatch && state.theme === 'dynamic') {
+      elements.themeDropdownSelectedSwatch.style.background = `hsl(${dominantHue}, ${accentSat}%, ${accentLight}%)`;
+    }
   }
+
+  function extractFromImg(loadedImg) {
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      canvas.width = 64;
+      canvas.height = 64;
+      ctx.drawImage(loadedImg, 0, 0, 64, 64);
+      const imgData = ctx.getImageData(0, 0, 64, 64).data;
+
+      // Pass 1: Chromatic collection (ignores blindingly bright white backgrounds > 220 & deep blacks < 18)
+      let chromaR = 0, chromaG = 0, chromaB = 0, chromaCount = 0;
+      // Pass 2: Grayscale fallback collection
+      let grayR = 0, grayG = 0, grayB = 0, grayCount = 0;
+
+      for (let i = 0; i < imgData.length; i += 16) {
+        const r = imgData[i];
+        const g = imgData[i + 1];
+        const b = imgData[i + 2];
+        const a = imgData[i + 3];
+        if (a < 128) continue;
+        const brightness = (r + g + b) / 3;
+
+        if (brightness >= 18 && brightness <= 220) {
+          grayR += r;
+          grayG += g;
+          grayB += b;
+          grayCount++;
+
+          const maxC = Math.max(r, g, b);
+          const minC = Math.min(r, g, b);
+          const sat = (maxC - minC) / Math.max(1, maxC);
+          if (sat > 0.14) {
+            chromaR += r;
+            chromaG += g;
+            chromaB += b;
+            chromaCount++;
+          }
+        }
+      }
+
+      let avgR, avgG, avgB;
+      if (chromaCount >= 6) {
+        avgR = Math.round(chromaR / chromaCount);
+        avgG = Math.round(chromaG / chromaCount);
+        avgB = Math.round(chromaB / chromaCount);
+      } else if (grayCount > 0) {
+        avgR = Math.round(grayR / grayCount);
+        avgG = Math.round(grayG / grayCount);
+        avgB = Math.round(grayB / grayCount);
+      } else {
+        let totR = 0, totG = 0, totB = 0, totCnt = 0;
+        for (let i = 0; i < imgData.length; i += 16) {
+          totR += imgData[i];
+          totG += imgData[i + 1];
+          totB += imgData[i + 2];
+          totCnt++;
+        }
+        avgR = Math.round(totR / Math.max(1, totCnt));
+        avgG = Math.round(totG / Math.max(1, totCnt));
+        avgB = Math.round(totB / Math.max(1, totCnt));
+      }
+
+      applyPaletteFromRgb(avgR, avgG, avgB);
+    } catch (err) {
+      console.warn('Canvas dynamic theme extraction error (CORS):', err);
+      fallbackDynamicTheme();
+    }
+  }
+
+  if (typeof imgOrUrl === 'string') {
+    if (!imgOrUrl) {
+      fallbackDynamicTheme();
+      return;
+    }
+    const temp = new Image();
+    temp.crossOrigin = 'anonymous';
+    temp.onload = () => extractFromImg(temp);
+    temp.onerror = () => fallbackDynamicTheme();
+    temp.src = imgOrUrl;
+    return;
+  }
+
+  if (imgOrUrl instanceof HTMLImageElement) {
+    if (imgOrUrl.complete && imgOrUrl.naturalWidth > 0) {
+      const temp = new Image();
+      temp.crossOrigin = 'anonymous';
+      temp.onload = () => extractFromImg(temp);
+      temp.onerror = () => extractFromImg(imgOrUrl);
+      temp.src = imgOrUrl.src;
+    } else {
+      imgOrUrl.addEventListener('load', () => applyDynamicThemeFromImage(imgOrUrl), { once: true });
+    }
+    return;
+  }
+
+  fallbackDynamicTheme();
 }
 
 function clearDynamicThemeVariables() {
@@ -506,9 +755,13 @@ function rgbToHsl(r, g, b) {
   return { h, s, l };
 }
 
-// --- Web Audio API 10-Band Equalizer ---
+// --- Web Audio API 10-Band Equalizer, Preamp & Dynamics Limiter ---
 let audioCtx = null;
 let eqFilters = [];
+let preampNode = null;
+let limiterNode = null;
+let isLimiterEnabled = true;
+let currentPreampDb = 0;
 const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 const EQ_PRESETS = {
   flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -520,25 +773,414 @@ const EQ_PRESETS = {
   acoustic: [3, 2, 1, 1, 2, 2, 3, 3, 2, 1]
 };
 
-function initEqualizer() {
-  if (!elements.eqSlidersContainer) return;
-  elements.eqSlidersContainer.innerHTML = EQ_FREQUENCIES.map((freq, idx) => {
-    const label = freq >= 1000 ? `${freq / 1000}k` : `${freq}`;
-    return `
-      <div class="eq-band-col">
-        <input type="range" min="-12" max="12" step="0.5" value="0" data-index="${idx}">
-        <span class="eq-band-label">${label}</span>
-      </div>
-    `;
-  }).join('');
+function formatPreampText(db) {
+  const sign = db > 0 ? '+' : '';
+  return `${sign}${db.toFixed(1)} dB`;
+}
 
-  elements.eqSlidersContainer.querySelectorAll('input[type="range"]').forEach(slider => {
-    slider.addEventListener('input', (e) => {
-      const idx = parseInt(e.target.getAttribute('data-index'), 10);
-      const val = parseFloat(e.target.value);
-      if (eqFilters[idx]) eqFilters[idx].gain.value = val;
-    });
+function updatePreampGain(db) {
+  currentPreampDb = db;
+  if (elements.eqPreampValue) {
+    elements.eqPreampValue.textContent = formatPreampText(db);
+  }
+  if (preampNode && audioCtx) {
+    const linearGain = Math.pow(10, currentPreampDb / 20);
+    try {
+      preampNode.gain.setTargetAtTime(linearGain, audioCtx.currentTime, 0.01);
+    } catch (e) {
+      preampNode.gain.value = linearGain;
+    }
+  }
+}
+
+function updateLimiterRouting() {
+  if (!audioCtx || !eqFilters || !eqFilters.length) return;
+  const lastFilter = eqFilters[eqFilters.length - 1];
+  try {
+    lastFilter.disconnect();
+  } catch (e) {}
+  try {
+    if (limiterNode) limiterNode.disconnect();
+  } catch (e) {}
+
+  if (isLimiterEnabled) {
+    if (!limiterNode) {
+      limiterNode = audioCtx.createDynamicsCompressor();
+      limiterNode.threshold.value = -1.5;
+      limiterNode.knee.value = 4.0;
+      limiterNode.ratio.value = 20.0;
+      limiterNode.attack.value = 0.003;
+      limiterNode.release.value = 0.15;
+    }
+    try {
+      lastFilter.connect(limiterNode);
+      limiterNode.connect(audioCtx.destination);
+    } catch (e) {
+      console.warn('Could not connect limiter node:', e);
+      lastFilter.connect(audioCtx.destination);
+    }
+  } else {
+    try {
+      lastFilter.connect(audioCtx.destination);
+    } catch (e) {
+      console.warn('Could not connect filter to destination:', e);
+    }
+  }
+}
+
+// --- Universal Settings Persistence & Storage ---
+function saveAllSettings() {
+  // 1. Theme
+  if (state.theme) {
+    setStoredItem('theme', state.theme);
+  }
+
+  // 2. Ambient Cover Background
+  if (elements.ambientCoverBgToggle) {
+    isAmbientCoverBgEnabled = elements.ambientCoverBgToggle.checked;
+  }
+  setStoredItem('ambient_cover_bg', isAmbientCoverBgEnabled ? 'true' : 'false');
+  document.body.classList.toggle('ambient-cover-bg', isAmbientCoverBgEnabled);
+
+  // 3. Tonarr Host settings
+  const hostUrl = elements.hostUrlInput ? elements.hostUrlInput.value.trim() : (state.config?.tonarr_host_url || state.config?.soundsphere_host_url || '');
+  const hostToken = elements.hostTokenInput ? elements.hostTokenInput.value.trim() : (state.config?.tonarr_host_token || state.config?.soundsphere_host_token || '');
+  setStoredItem('host_url', hostUrl);
+  setStoredItem('host_token', hostToken);
+  setStoredItem('host_enabled', hostUrl ? 'true' : 'false');
+
+  // 4. Plex Server settings
+  const plexUrl = elements.plexUrlInput ? elements.plexUrlInput.value.trim() : (state.config?.plex_url || '');
+  const plexToken = elements.plexTokenInput ? elements.plexTokenInput.value.trim() : (state.config?.plex_token || '');
+  const plexSection = elements.plexSectionSelect ? elements.plexSectionSelect.value : (state.config?.plex_section || '');
+  const plexViaHost = elements.plexViaHostToggle ? elements.plexViaHostToggle.checked : (state.config?.plex_via_host || false);
+  const preferPlexMeta = elements.preferPlexMetadataToggle ? elements.preferPlexMetadataToggle.checked : (state.config?.prefer_plex_metadata !== false);
+
+  setStoredItem('plex_url', plexUrl);
+  setStoredItem('plex_token', plexToken);
+  setStoredItem('plex_section', plexSection);
+  setStoredItem('plex_via_host', plexViaHost ? 'true' : 'false');
+  setStoredItem('prefer_plex_metadata', preferPlexMeta ? 'true' : 'false');
+  if (plexUrl && plexToken) {
+    setStoredItem('plex_enabled', 'true');
+  }
+
+  // 5. Equalizer settings
+  if (elements.eqPreampSlider) {
+    const p = parseFloat(elements.eqPreampSlider.value);
+    if (!isNaN(p)) currentPreampDb = p;
+  }
+  if (elements.eqLimiterToggle) {
+    isLimiterEnabled = elements.eqLimiterToggle.checked;
+  }
+  setStoredItem('eq_preamp', currentPreampDb.toString());
+  setStoredItem('eq_limiter', isLimiterEnabled ? 'true' : 'false');
+  if (elements.eqPresetSelect) {
+    setStoredItem('eq_preset', elements.eqPresetSelect.value);
+  }
+  const eqSliders = elements.eqSlidersContainer ? elements.eqSlidersContainer.querySelectorAll('input[type="range"]') : [];
+  if (eqSliders.length === 10) {
+    const bandValues = Array.from(eqSliders).map(s => parseFloat(s.value));
+    setStoredItem('eq_bands', JSON.stringify(bandValues));
+  }
+
+  // 6. Audio playback settings
+  if (elements.audioElement) {
+    setStoredItem('volume', elements.audioElement.volume.toString());
+    setStoredItem('muted', elements.audioElement.muted ? 'true' : 'false');
+  }
+  setStoredItem('repeat_mode', state.repeatMode || 'off');
+  setStoredItem('shuffle_mode', state.isShuffled ? 'true' : 'false');
+  setStoredItem('view_mode', state.viewMode || 'grid');
+
+  // Update state.config in memory
+  if (!state.config) state.config = {};
+  Object.assign(state.config, {
+    theme: state.theme,
+    ambient_cover_bg: isAmbientCoverBgEnabled,
+    eq_preset: elements.eqPresetSelect ? elements.eqPresetSelect.value : (getStoredItem('eq_preset') || 'flat'),
+    eq_bands: eqSliders.length === 10 ? Array.from(eqSliders).map(s => parseFloat(s.value)) : (state.config?.eq_bands || [0,0,0,0,0,0,0,0,0,0]),
+    eq_preamp: currentPreampDb,
+    eq_limiter: isLimiterEnabled,
+    tonarr_host_url: hostUrl,
+    soundsphere_host_url: hostUrl,
+    tonarr_host_token: hostToken,
+    soundsphere_host_token: hostToken,
+    tonarr_host_enabled: Boolean(hostUrl),
+    soundsphere_host_enabled: Boolean(hostUrl),
+    plex_url: plexUrl,
+    plex_token: plexToken,
+    plex_section: plexSection,
+    plex_via_host: plexViaHost,
+    prefer_plex_metadata: preferPlexMeta
   });
+}
+window.saveAllSettings = saveAllSettings;
+
+let _backendConfigSyncTimer = null;
+function syncConfigToBackend(immediate = false) {
+  saveAllSettings();
+  if (_backendConfigSyncTimer) clearTimeout(_backendConfigSyncTimer);
+  const doSync = async () => {
+    try {
+      let eqBandValues = [];
+      const eqSliders = elements.eqSlidersContainer ? elements.eqSlidersContainer.querySelectorAll('input[type="range"]') : [];
+      if (eqSliders.length === 10) {
+        eqBandValues = Array.from(eqSliders).map(s => parseFloat(s.value));
+      } else {
+        const storedBands = getStoredItem('eq_bands');
+        if (storedBands) {
+          try {
+            const parsed = JSON.parse(storedBands);
+            if (Array.isArray(parsed) && parsed.length === 10) eqBandValues = parsed;
+          } catch (_) {}
+        }
+        if (eqBandValues.length !== 10 && Array.isArray(state.config?.eq_bands) && state.config.eq_bands.length === 10) {
+          eqBandValues = state.config.eq_bands;
+        }
+      }
+      if (eqBandValues.length !== 10) {
+        eqBandValues = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      }
+
+      const activePreset = (elements.eqPresetSelect && elements.eqPresetSelect.value) || getStoredItem('eq_preset') || state.config?.eq_preset || 'flat';
+      const activePreamp = (elements.eqPreampSlider ? parseFloat(elements.eqPreampSlider.value) : null) ?? currentPreampDb ?? 0;
+      const activeLimiter = elements.eqLimiterToggle ? elements.eqLimiterToggle.checked : isLimiterEnabled;
+      const activeAmbient = elements.ambientCoverBgToggle ? elements.ambientCoverBgToggle.checked : ((getStoredItem('ambient_cover_bg') !== null) ? (getStoredItem('ambient_cover_bg') === 'true') : isAmbientCoverBgEnabled);
+
+      const hostUrl = elements.hostUrlInput ? elements.hostUrlInput.value.trim() : (state.config?.tonarr_host_url || state.config?.soundsphere_host_url || '');
+      const hostToken = elements.hostTokenInput ? elements.hostTokenInput.value.trim() : (state.config?.tonarr_host_token || state.config?.soundsphere_host_token || '');
+      const cfg = {
+        ...(state.config || {}),
+        theme: state.theme,
+        ambient_cover_bg: activeAmbient,
+        eq_preset: activePreset,
+        eq_bands: eqBandValues,
+        eq_preamp: activePreamp,
+        eq_limiter: activeLimiter,
+        tonarr_host_url: hostUrl,
+        soundsphere_host_url: hostUrl,
+        tonarr_host_token: hostToken,
+        soundsphere_host_token: hostToken,
+        tonarr_host_enabled: Boolean(hostUrl),
+        soundsphere_host_enabled: Boolean(hostUrl),
+        plex_url: elements.plexUrlInput ? elements.plexUrlInput.value.trim() : (state.config?.plex_url || ''),
+        plex_token: elements.plexTokenInput ? elements.plexTokenInput.value.trim() : (state.config?.plex_token || ''),
+        plex_section_id: elements.plexSectionSelect ? elements.plexSectionSelect.value : (state.config?.plex_section_id || ''),
+        plex_via_host: elements.plexViaHostToggle ? elements.plexViaHostToggle.checked : (state.config?.plex_via_host || false),
+        prefer_plex_metadata: elements.preferPlexMetadataToggle ? elements.preferPlexMetadataToggle.checked : (state.config?.prefer_plex_metadata !== false)
+      };
+
+      // 1. Local backend
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cfg)
+        });
+      } catch (_) {}
+
+      // 2. Remote Host if configured and different from local
+      const hostEndpoint = getApiEndpoint('/api/config');
+      if (hostEndpoint && !hostEndpoint.startsWith('/api/config')) {
+        try {
+          await fetch(hostEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cfg)
+          });
+        } catch (_) {}
+      }
+    } catch (_) {}
+  };
+  if (immediate) {
+    doSync();
+  } else {
+    _backendConfigSyncTimer = setTimeout(doSync, 300);
+  }
+}
+window.syncConfigToBackend = syncConfigToBackend;
+
+function loadAllSettings() {
+  // 1. Theme
+  const savedTheme = getStoredItem('theme');
+  if (savedTheme) setTheme(savedTheme);
+
+  // 2. Ambient Cover Bg
+  const savedAmbient = getStoredItem('ambient_cover_bg');
+  if (savedAmbient !== null) {
+    setAmbientCoverBg(savedAmbient === 'true', false);
+  }
+
+  // 3. Host
+  const savedHostUrl = getStoredItem('host_url');
+  const savedHostToken = getStoredItem('host_token');
+  if (elements.hostUrlInput && savedHostUrl) elements.hostUrlInput.value = savedHostUrl;
+  if (elements.hostTokenInput && savedHostToken) elements.hostTokenInput.value = savedHostToken;
+
+  // 4. Plex
+  const savedPlexUrl = getStoredItem('plex_url');
+  const savedPlexToken = getStoredItem('plex_token');
+  const savedPlexViaHost = getStoredItem('plex_via_host');
+  const savedPreferPlex = getStoredItem('prefer_plex_metadata');
+  if (elements.plexUrlInput && savedPlexUrl) elements.plexUrlInput.value = savedPlexUrl;
+  if (elements.plexTokenInput && savedPlexToken) elements.plexTokenInput.value = savedPlexToken;
+  if (elements.plexViaHostToggle && savedPlexViaHost !== null) {
+    elements.plexViaHostToggle.checked = savedPlexViaHost === 'true';
+  }
+  if (elements.preferPlexMetadataToggle && savedPreferPlex !== null) {
+    elements.preferPlexMetadataToggle.checked = savedPreferPlex !== 'false';
+  }
+
+  // 5. Volume & Playback modes
+  const savedVol = getStoredItem('volume');
+  if (savedVol !== null && elements.audioElement) {
+    const v = parseFloat(savedVol);
+    if (!isNaN(v)) {
+      elements.audioElement.volume = v;
+      if (elements.volumeSlider) elements.volumeSlider.value = v;
+    }
+  }
+  const savedMuted = getStoredItem('muted');
+  if (savedMuted === 'true' && elements.audioElement) {
+    elements.audioElement.muted = true;
+    updateVolumeIcon();
+  }
+  const savedRepeat = getStoredItem('repeat_mode');
+  if (savedRepeat) {
+    state.repeatMode = savedRepeat;
+    updateRepeatBtnUI();
+  }
+  const savedShuffle = getStoredItem('shuffle_mode');
+  if (savedShuffle !== null) {
+    state.isShuffled = savedShuffle === 'true';
+    updateShuffleBtnUI();
+  }
+
+  // 6. View mode
+  const savedViewMode = getStoredItem('view_mode');
+  if (savedViewMode) {
+    state.viewMode = savedViewMode;
+  }
+
+  // 7. Equalizer restoration
+  restoreEqualizer();
+}
+window.loadAllSettings = loadAllSettings;
+
+function restoreEqualizer() {
+  // Restore Preamp setting
+  const savedPreamp = getStoredItem('eq_preamp') ?? (state.config?.eq_preamp !== undefined ? String(state.config.eq_preamp) : null);
+  if (savedPreamp !== null) {
+    const p = parseFloat(savedPreamp);
+    if (!isNaN(p)) {
+      currentPreampDb = p;
+      updatePreampGain(p);
+    }
+  }
+  if (elements.eqPreampSlider) {
+    elements.eqPreampSlider.value = currentPreampDb;
+    if (elements.eqPreampValue) elements.eqPreampValue.textContent = formatPreampText(currentPreampDb);
+  }
+
+  // Restore Limiter setting
+  const savedLimiter = getStoredItem('eq_limiter') ?? (state.config?.eq_limiter !== undefined ? (state.config.eq_limiter ? 'true' : 'false') : null);
+  if (savedLimiter !== null) {
+    isLimiterEnabled = savedLimiter !== 'false';
+    updateLimiterRouting();
+  }
+  if (elements.eqLimiterToggle) {
+    elements.eqLimiterToggle.checked = isLimiterEnabled;
+  }
+
+  // Restore saved preset
+  const savedPreset = getStoredItem('eq_preset') || state.config?.eq_preset || 'flat';
+  if (elements.eqPresetSelect) {
+    elements.eqPresetSelect.value = savedPreset;
+  }
+
+  // Restore saved bands
+  let bandsToApply = null;
+  const savedBands = getStoredItem('eq_bands');
+  if (savedBands) {
+    try {
+      const parsed = JSON.parse(savedBands);
+      if (Array.isArray(parsed) && parsed.length === 10) bandsToApply = parsed;
+    } catch (e) {}
+  }
+  if (!bandsToApply && Array.isArray(state.config?.eq_bands) && state.config.eq_bands.length === 10) {
+    bandsToApply = state.config.eq_bands;
+  }
+  if (!bandsToApply && EQ_PRESETS[savedPreset]) {
+    bandsToApply = EQ_PRESETS[savedPreset];
+  }
+
+  if (bandsToApply) {
+    const sliders = elements.eqSlidersContainer ? elements.eqSlidersContainer.querySelectorAll('input[type="range"]') : [];
+    if (sliders.length === 10) {
+      sliders.forEach((s, idx) => {
+        if (bandsToApply[idx] !== undefined) {
+          s.value = bandsToApply[idx];
+          if (eqFilters[idx]) eqFilters[idx].gain.value = bandsToApply[idx];
+        }
+      });
+    } else {
+      bandsToApply.forEach((val, idx) => {
+        if (typeof val === 'number' && eqFilters[idx]) {
+          eqFilters[idx].gain.value = val;
+        }
+      });
+    }
+  }
+}
+window.restoreEqualizer = restoreEqualizer;
+
+function initEqualizer() {
+  if (elements.eqPreampSlider) {
+    elements.eqPreampSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      updatePreampGain(val);
+      setStoredItem('eq_preamp', val.toString());
+      syncConfigToBackend();
+    });
+  }
+
+  if (elements.eqLimiterToggle) {
+    elements.eqLimiterToggle.addEventListener('change', (e) => {
+      isLimiterEnabled = e.target.checked;
+      updateLimiterRouting();
+      setStoredItem('eq_limiter', isLimiterEnabled ? 'true' : 'false');
+      syncConfigToBackend();
+    });
+  }
+
+  if (elements.eqSlidersContainer) {
+    elements.eqSlidersContainer.innerHTML = EQ_FREQUENCIES.map((freq, idx) => {
+      const label = freq >= 1000 ? `${freq / 1000}k` : `${freq}`;
+      return `
+        <div class="eq-band-col">
+          <input type="range" min="-12" max="12" step="0.5" value="0" data-index="${idx}">
+          <span class="eq-band-label">${label}</span>
+        </div>
+      `;
+    }).join('');
+
+    elements.eqSlidersContainer.querySelectorAll('input[type="range"]').forEach(slider => {
+      slider.addEventListener('input', (e) => {
+        const idx = parseInt(e.target.getAttribute('data-index'), 10);
+        const val = parseFloat(e.target.value);
+        if (eqFilters[idx]) eqFilters[idx].gain.value = val;
+        const sliders = elements.eqSlidersContainer.querySelectorAll('input[type="range"]');
+        const bandValues = Array.from(sliders).map(s => parseFloat(s.value));
+        setStoredItem('eq_bands', JSON.stringify(bandValues));
+        if (elements.eqPresetSelect) elements.eqPresetSelect.value = 'custom';
+        setStoredItem('eq_preset', 'custom');
+        syncConfigToBackend();
+      });
+    });
+  }
+
+  restoreEqualizer();
 }
 
 function setupAudioContext() {
@@ -557,6 +1199,11 @@ function setupAudioContext() {
     }
     const source = audioCtx.createMediaElementSource(elements.audioElement);
     
+    // Master Preamp Gain
+    preampNode = audioCtx.createGain();
+    preampNode.gain.value = Math.pow(10, currentPreampDb / 20);
+
+    // 10-Band EQ Filters
     eqFilters = EQ_FREQUENCIES.map((freq, idx) => {
       const filter = audioCtx.createBiquadFilter();
       filter.type = idx === 0 ? 'lowshelf' : (idx === EQ_FREQUENCIES.length - 1 ? 'highshelf' : 'peaking');
@@ -565,19 +1212,44 @@ function setupAudioContext() {
       return filter;
     });
 
-    let prevNode = source;
+    // Dynamics Limiter Node (Anti-Clipping & Overdrive Protection)
+    limiterNode = audioCtx.createDynamicsCompressor();
+    limiterNode.threshold.value = -1.5;
+    limiterNode.knee.value = 4.0;
+    limiterNode.ratio.value = 20.0;
+    limiterNode.attack.value = 0.003;
+    limiterNode.release.value = 0.15;
+
+    // Chain: source -> preampNode -> eqFilters
+    source.connect(preampNode);
+    let prevNode = preampNode;
     eqFilters.forEach(f => {
       prevNode.connect(f);
       prevNode = f;
     });
-    prevNode.connect(audioCtx.destination);
+
+    // Chain: eqFilters -> limiterNode (or destination)
+    if (isLimiterEnabled) {
+      prevNode.connect(limiterNode);
+      limiterNode.connect(audioCtx.destination);
+    } else {
+      prevNode.connect(audioCtx.destination);
+    }
+
+    // Apply active EQ band gains, preamp and limiter routing to Web Audio graph
+    updatePreampGain(currentPreampDb);
+    updateLimiterRouting();
+    restoreEqualizer();
   } catch (err) {
     console.warn('Web Audio API not initialized (using direct audio output):', err);
   }
 }
 
-function applyEqPreset(presetName) {
+function applyEqPreset(presetName, shouldSync = true) {
   const gains = EQ_PRESETS[presetName] || EQ_PRESETS.flat;
+  if (elements.eqPresetSelect) {
+    elements.eqPresetSelect.value = presetName;
+  }
   const sliders = elements.eqSlidersContainer ? elements.eqSlidersContainer.querySelectorAll('input[type="range"]') : [];
   sliders.forEach((s, idx) => {
     if (gains[idx] !== undefined) {
@@ -585,6 +1257,18 @@ function applyEqPreset(presetName) {
       if (eqFilters[idx]) eqFilters[idx].gain.value = gains[idx];
     }
   });
+  if (sliders.length === 0) {
+    gains.forEach((val, idx) => {
+      if (eqFilters[idx]) eqFilters[idx].gain.value = val;
+    });
+  }
+  try {
+    setStoredItem('eq_preset', presetName);
+    setStoredItem('eq_bands', JSON.stringify(gains));
+  } catch (e) {}
+  if (shouldSync && typeof syncConfigToBackend === 'function') {
+    syncConfigToBackend();
+  }
 }
 
 // --- View Switching & Navigation History ---
@@ -634,7 +1318,7 @@ function switchView(viewName, data = null, pushHistory = true) {
   } else if (viewName === 'host') {
     state.activeSource = 'host';
     if (elements.viewSongs) elements.viewSongs.classList.add('active');
-    if (elements.songsViewTitle) elements.songsViewTitle.textContent = 'SoundSphere Host';
+    if (elements.songsViewTitle) elements.songsViewTitle.textContent = 'Tonarr Host';
     if (elements.songsViewSubtitle) elements.songsViewSubtitle.textContent = `${getFilteredTracks().length} Titel vom Host Server`;
     renderTracksTable();
   } else if (viewName === 'plex') {
@@ -683,11 +1367,11 @@ function getFilteredTracks() {
   let list = state.tracks;
 
   if (state.activeSource === 'host') {
-    list = list.filter(t => (t.file_path && t.file_path.startsWith('host://')) || (t.id && t.id.startsWith('host://')) || t.source === 'soundsphere_host');
+    list = list.filter(t => isHostTrack(t));
   } else if (state.activeSource === 'plex') {
-    list = list.filter(t => (t.file_path && t.file_path.startsWith('plex://')) || (t.id && t.id.startsWith('plex://')));
+    list = list.filter(t => (t.file_path && t.file_path.startsWith('plex://')) || (t.id && t.id.startsWith('plex://')) || t.source === 'plex');
   } else if (state.activeSource === 'local') {
-    list = list.filter(t => !(t.file_path && (t.file_path.startsWith('plex://') || t.file_path.startsWith('host://'))) && !(t.id && (t.id.startsWith('plex://') || t.id.startsWith('host://'))) && t.source !== 'soundsphere_host');
+    list = list.filter(t => !isHostTrack(t) && !(t.file_path && t.file_path.startsWith('plex://')) && !(t.id && t.id.startsWith('plex://')) && t.source !== 'plex');
   }
 
   if (state.activeView === 'favorites') {
@@ -1512,7 +2196,17 @@ window.toggleFullscreen = toggleFullscreen;
 // --- True Dual-Layer Crossfade Engines ---
 function crossfadeImage(frontImg, backImg, fallbackEl, newUrl, onLoaded) {
   if (!frontImg) return;
+  if (!newUrl) {
+    frontImg.classList.add('hidden');
+    if (backImg) backImg.classList.add('hidden');
+    if (fallbackEl) fallbackEl.classList.remove('hidden');
+    return;
+  }
   const tempImg = new Image();
+  tempImg.crossOrigin = 'anonymous';
+  frontImg.crossOrigin = 'anonymous';
+  if (backImg) backImg.crossOrigin = 'anonymous';
+
   tempImg.onload = () => {
     // 1. Move current visible image to background layer
     if (backImg && frontImg.src && !frontImg.classList.contains('hidden')) {
@@ -1547,11 +2241,16 @@ function crossfadeImage(frontImg, backImg, fallbackEl, newUrl, onLoaded) {
 
 function crossfadeBackdrop(frontBackdrop, backBackdrop, newUrl) {
   if (!frontBackdrop) return;
+  if (!newUrl) {
+    frontBackdrop.style.backgroundImage = 'none';
+    if (backBackdrop) backBackdrop.style.backgroundImage = 'none';
+    return;
+  }
   const tempImg = new Image();
   tempImg.onload = () => {
     if (backBackdrop && frontBackdrop.style.backgroundImage) {
       backBackdrop.style.backgroundImage = frontBackdrop.style.backgroundImage;
-      backBackdrop.style.opacity = '0.65';
+      backBackdrop.style.opacity = '0.9';
     }
 
     frontBackdrop.style.transition = 'none';
@@ -1561,7 +2260,11 @@ function crossfadeBackdrop(frontBackdrop, backBackdrop, newUrl) {
     void frontBackdrop.offsetWidth;
 
     frontBackdrop.style.transition = 'opacity 1.6s ease-in-out';
-    frontBackdrop.style.opacity = '0.65';
+    frontBackdrop.style.opacity = '0.9';
+  };
+  tempImg.onerror = () => {
+    frontBackdrop.style.backgroundImage = `url("${newUrl}")`;
+    frontBackdrop.style.opacity = '0.9';
   };
   tempImg.src = newUrl;
 }
@@ -1594,10 +2297,10 @@ function savePlaybackState(force = false) {
     
     // 1. LocalStorage
     try {
-      localStorage.setItem('soundsphere_last_playback', JSON.stringify(playbackData));
+      setStoredItem('last_playback', JSON.stringify(playbackData));
     } catch (e) {}
 
-    // 2. Persistent Backend Disk Store (~/.soundsphere_playback_state.json)
+    // 2. Persistent Backend Disk Store (~/.tonarr_playback_state.json / ~/.soundsphere_playback_state.json)
     const jsonStr = JSON.stringify(playbackData);
     if (navigator.sendBeacon && force) {
       navigator.sendBeacon('/api/playback/state', new Blob([jsonStr], { type: 'application/json' }));
@@ -1620,7 +2323,7 @@ async function restoreLastPlayback() {
     let data = null;
     // 1. Check localStorage first
     try {
-      const saved = localStorage.getItem('soundsphere_last_playback');
+      const saved = getStoredItem('last_playback');
       if (saved) {
         data = JSON.parse(saved);
       }
@@ -1722,6 +2425,9 @@ async function selectTrack(track, autoPlay = true) {
   const coverUrl = getTrackCoverUrl(track);
   
   // Bottom Player Bar Artwork (True Dual-Layer Crossfade 1.0s)
+  if (state.theme === 'dynamic') {
+    applyDynamicThemeFromImage(coverUrl || track);
+  }
   crossfadeImage(elements.spCoverImg, elements.spCoverImgBack, elements.spCoverFallback, coverUrl, (loadedImg) => {
     if (state.theme === 'dynamic') {
       applyDynamicThemeFromImage(loadedImg);
@@ -1737,6 +2443,7 @@ async function selectTrack(track, autoPlay = true) {
 
   // Fullscreen Atmosphere Backdrop (True Dual-Layer Crossfade 1.6s)
   crossfadeBackdrop(elements.fsBackdrop, elements.fsBackdropBack, coverUrl);
+  updateGlobalCoverBackdrop(coverUrl);
 
   // Update Windows Media Session
   updateMediaSession(track);
@@ -1851,10 +2558,10 @@ async function loadTrackLyrics(track, isRetry = false) {
   if (!isRetry) state.parsedLyrics = [];
   if (!track) return;
 
-  const isHost = track.source === 'soundsphere_host' || (track.file_path && track.file_path.startsWith('host://')) || (track.id && String(track.id).startsWith('host://'));
+  const isHost = isHostTrack(track);
   const hostBase = getHostBaseUrl();
 
-  // 1. Direct SoundSphere Host Lyrics resolution
+  // 1. Direct Tonarr Host Lyrics resolution
   if (isHost && hostBase) {
     try {
       const token = getHostToken();
@@ -2102,9 +2809,9 @@ function updateBadgeCounts() {
   if (elements.countFavsBadge) elements.countFavsBadge.textContent = state.favorites.size;
   if (elements.countQueueBadge) elements.countQueueBadge.textContent = state.queue.length;
 
-  const hostCount = state.tracks.filter(t => (t.file_path && t.file_path.startsWith('host://')) || (t.id && t.id.startsWith('host://')) || t.source === 'soundsphere_host').length;
-  const plexCount = state.tracks.filter(t => (t.file_path && t.file_path.startsWith('plex://')) || (t.id && t.id.startsWith('plex://'))).length;
-  const localCount = state.tracks.filter(t => !(t.file_path && (t.file_path.startsWith('plex://') || t.file_path.startsWith('host://'))) && !(t.id && (t.id.startsWith('plex://') || t.id.startsWith('host://'))) && t.source !== 'soundsphere_host').length;
+  const hostCount = state.tracks.filter(t => isHostTrack(t)).length;
+  const plexCount = state.tracks.filter(t => (t.file_path && t.file_path.startsWith('plex://')) || (t.id && t.id.startsWith('plex://')) || t.source === 'plex').length;
+  const localCount = state.tracks.filter(t => !isHostTrack(t) && !(t.file_path && t.file_path.startsWith('plex://')) && !(t.id && t.id.startsWith('plex://')) && t.source !== 'plex').length;
   if (elements.countHostBadge) elements.countHostBadge.textContent = hostCount;
   if (elements.countPlexBadge) elements.countPlexBadge.textContent = plexCount;
   if (elements.countLocalBadge) elements.countLocalBadge.textContent = localCount;
@@ -2120,52 +2827,7 @@ function updateBadgeCounts() {
   if (elements.countAlbumsBadge) elements.countAlbumsBadge.textContent = albums.size;
 }
 
-// --- Backend API Sync ---
-
-function updateAuthUI(cfg = state.config || {}) {
-  const isPlexConnected = Boolean(cfg.plex_token && cfg.plex_url);
-  if (elements.plexLoggedOutContainer) elements.plexLoggedOutContainer.style.display = isPlexConnected ? 'none' : 'flex';
-  if (elements.plexConnectedContainer) elements.plexConnectedContainer.style.display = isPlexConnected ? 'flex' : 'none';
-  if (isPlexConnected && elements.plexConnectedServerInfo) {
-    elements.plexConnectedServerInfo.textContent = `Server: ${cfg.plex_url} (${state.tracks ? state.tracks.length : 0} Songs)`;
-  }
-
-  const isSpotifyConnected = Boolean(cfg.spotify_access_token || cfg.spotify_user_name);
-  if (elements.spotifyLoggedOutContainer) elements.spotifyLoggedOutContainer.style.display = isSpotifyConnected ? 'none' : 'flex';
-  if (elements.spotifyConnectedContainer) elements.spotifyConnectedContainer.style.display = isSpotifyConnected ? 'flex' : 'none';
-  if (isSpotifyConnected && elements.spotifyConnectedUserInfo) {
-    elements.spotifyConnectedUserInfo.textContent = `Angemeldet als: ${cfg.spotify_user_name || 'Spotify Benutzer'}`;
-  }
-}
-window.updateAuthUI = updateAuthUI;
-
-async function fetchConfig() {
-  try {
-    const res = await fetch('/api/config');
-    if (res.ok) {
-      state.config = await res.json();
-      if (state.config.theme) setTheme(state.config.theme);
-      if (elements.currentFolderText && state.config.last_music_dir) {
-        elements.currentFolderText.textContent = state.config.last_music_dir;
-      }
-    }
-  } catch (err) {
-    console.warn('Config fetch error:', err);
-  }
-}
-
-async function fetchPlaylists() {
-  try {
-    const res = await fetch('/api/playlists');
-    if (res.ok) {
-      const data = await res.json();
-      state.playlists = Array.isArray(data) ? data : (Array.isArray(data.playlists) ? data.playlists : []);
-      renderPlaylists();
-    }
-  } catch (err) {
-    console.warn('Playlists fetch error:', err);
-  }
-}
+// --- Backend API Sync & Library Actions ---
 
 async function pickFolder() {
   try {
@@ -2203,12 +2865,14 @@ async function scanMusicFolder(dir = '') {
 
 // --- Setup Event Listeners ---
 function setupEventListeners() {
-  // Save Playback State on Window Close / Page Exit
+  // Save Playback State & Settings on Window Close / Page Exit
   window.addEventListener('beforeunload', () => {
     savePlaybackState(true);
+    syncConfigToBackend(true);
   });
   window.addEventListener('pagehide', () => {
     savePlaybackState(true);
+    syncConfigToBackend(true);
   });
 
   // Navigation History
@@ -2594,27 +3258,64 @@ function setupEventListeners() {
   // Volume
   if (elements.volumeSlider) {
     elements.volumeSlider.addEventListener('input', (e) => {
-      elements.audioElement.volume = parseFloat(e.target.value);
+      const v = parseFloat(e.target.value);
+      elements.audioElement.volume = v;
+      try { setStoredItem('volume', v.toString()); } catch (_) {}
     });
   }
 
   // Equalizer inside Settings Modal
   if (elements.eqPresetSelect) {
-    elements.eqPresetSelect.addEventListener('change', (e) => applyEqPreset(e.target.value));
+    elements.eqPresetSelect.addEventListener('change', (e) => {
+      if (e.target.value !== 'custom') {
+        applyEqPreset(e.target.value);
+      } else {
+        setStoredItem('eq_preset', 'custom');
+      }
+      syncConfigToBackend();
+    });
   }
   if (elements.btnResetEq) {
-    elements.btnResetEq.addEventListener('click', () => applyEqPreset('flat'));
+    elements.btnResetEq.addEventListener('click', () => {
+      applyEqPreset('flat', false);
+      if (elements.eqPresetSelect) elements.eqPresetSelect.value = 'flat';
+      updatePreampGain(0);
+      if (elements.eqPreampSlider) elements.eqPreampSlider.value = 0;
+      setStoredItem('eq_preamp', '0');
+      syncConfigToBackend(true);
+    });
   }
 
   // Settings Modal & Themes
   if (elements.btnOpenSettings) {
     elements.btnOpenSettings.addEventListener('click', () => {
       if (elements.settingsModal) elements.settingsModal.classList.add('open');
+      if (elements.ambientCoverBgToggle) {
+        elements.ambientCoverBgToggle.checked = Boolean(isAmbientCoverBgEnabled);
+      }
+      restoreEqualizer();
+      updateAuthUI();
+      checkPlexLiveStatus();
     });
   }
-  if (elements.btnCloseSettingsModal) elements.btnCloseSettingsModal.addEventListener('click', () => elements.settingsModal.classList.remove('open'));
-  if (elements.btnCancelSettings) elements.btnCancelSettings.addEventListener('click', () => elements.settingsModal.classList.remove('open'));
-  if (elements.settingsModalBackdrop) elements.settingsModalBackdrop.addEventListener('click', () => elements.settingsModal.classList.remove('open'));
+  if (elements.btnCloseSettingsModal) {
+    elements.btnCloseSettingsModal.addEventListener('click', () => {
+      syncConfigToBackend(true);
+      elements.settingsModal.classList.remove('open');
+    });
+  }
+  if (elements.btnCancelSettings) {
+    elements.btnCancelSettings.addEventListener('click', () => {
+      syncConfigToBackend(true);
+      elements.settingsModal.classList.remove('open');
+    });
+  }
+  if (elements.settingsModalBackdrop) {
+    elements.settingsModalBackdrop.addEventListener('click', () => {
+      syncConfigToBackend(true);
+      elements.settingsModal.classList.remove('open');
+    });
+  }
 
   // Settings Tab Navigation
   document.querySelectorAll('.settings-tab-btn').forEach(btn => {
@@ -2622,15 +3323,45 @@ function setupEventListeners() {
       const targetTab = btn.getAttribute('data-tab');
       document.querySelectorAll('.settings-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
       document.querySelectorAll('.settings-tab-pane').forEach(p => p.classList.toggle('active', p.id === targetTab));
+      if (targetTab === 'tabSources') {
+        updateAuthUI();
+        checkPlexLiveStatus();
+      }
     });
   });
 
+  // Custom Theme Dropdown Trigger & Options
+  if (elements.themeDropdownTrigger) {
+    elements.themeDropdownTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (elements.themeDropdownContainer) {
+        elements.themeDropdownContainer.classList.toggle('open');
+      }
+    });
+  }
+
   document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const t = btn.getAttribute('data-theme');
       setTheme(t);
+      if (elements.themeDropdownContainer) {
+        elements.themeDropdownContainer.classList.remove('open');
+      }
     });
   });
+
+  document.addEventListener('click', (e) => {
+    if (elements.themeDropdownContainer && !elements.themeDropdownContainer.contains(e.target)) {
+      elements.themeDropdownContainer.classList.remove('open');
+    }
+  });
+
+  if (elements.ambientCoverBgToggle) {
+    elements.ambientCoverBgToggle.addEventListener('change', (e) => {
+      setAmbientCoverBg(e.target.checked);
+    });
+  }
 
   // Create Playlist Modal
   if (elements.btnCreatePlaylist) {
@@ -2811,9 +3542,10 @@ function setupEventListeners() {
       }
     });
   }
-  // SoundSphere Host, Plex & Spotify Auth UI Handlers
+  // Tonarr Host, Plex & Spotify Auth UI Handlers
   function updateAuthUI(cfg = state.config || {}) {
-    const isHostConnected = Boolean(cfg.soundsphere_host_url);
+    const currentHostUrl = cfg.tonarr_host_url || cfg.soundsphere_host_url || getStoredItem('host_url') || '';
+    const isHostConnected = Boolean(currentHostUrl);
     if (elements.hostConnectionBadge) {
       elements.hostConnectionBadge.textContent = isHostConnected ? '🟢 Verbunden' : '🔴 Nicht verbunden';
       elements.hostConnectionBadge.className = `status-pill ${isHostConnected ? 'connected' : 'disconnected'}`;
@@ -2821,15 +3553,27 @@ function setupEventListeners() {
     if (elements.hostConnectedContainer) elements.hostConnectedContainer.style.display = isHostConnected ? 'flex' : 'none';
     if (elements.hostConfigContainer) elements.hostConfigContainer.style.display = isHostConnected ? 'none' : 'flex';
     if (isHostConnected && elements.hostConnectedServerInfo) {
-      const hostTracks = state.tracks.filter(t => t.source === 'soundsphere_host' || (t.file_path && t.file_path.startsWith('host://'))).length;
-      elements.hostConnectedServerInfo.textContent = `Server: ${cfg.soundsphere_host_url} (${hostTracks} Songs)`;
+      const hostTracks = state.tracks.filter(t => isHostTrack(t)).length;
+      elements.hostConnectedServerInfo.textContent = `Server: ${currentHostUrl} (${hostTracks} Songs)`;
     }
 
-    const isPlexConnected = Boolean(cfg.plex_token && cfg.plex_url);
-    if (elements.plexLoggedOutContainer) elements.plexLoggedOutContainer.style.display = isPlexConnected ? 'none' : 'flex';
-    if (elements.plexConnectedContainer) elements.plexConnectedContainer.style.display = isPlexConnected ? 'flex' : 'none';
-    if (isPlexConnected && elements.plexConnectedServerInfo) {
-      elements.plexConnectedServerInfo.textContent = `Server: ${cfg.plex_url} (${state.tracks ? state.tracks.length : 0} Songs)`;
+    const plexToken = cfg.plex_token || getStoredItem('plex_token') || '';
+    const plexUrl = cfg.plex_url || getStoredItem('plex_url') || '';
+    const plexViaHost = (elements.plexViaHostToggle && elements.plexViaHostToggle.checked) ||
+                        cfg.plex_via_host ||
+                        (getStoredItem('plex_via_host') === 'true');
+    const isPlexConfigured = Boolean((plexToken && plexUrl) || (plexViaHost && currentHostUrl) || (plexToken && !plexViaHost));
+
+    if (elements.plexConnectionBadge) {
+      elements.plexConnectionBadge.textContent = isPlexConfigured ? '🟢 Verbunden' : '🔴 Nicht verbunden';
+      elements.plexConnectionBadge.className = `status-pill ${isPlexConfigured ? 'connected' : 'disconnected'}`;
+    }
+    if (elements.plexLoggedOutContainer) elements.plexLoggedOutContainer.style.display = isPlexConfigured ? 'none' : 'flex';
+    if (elements.plexConnectedContainer) elements.plexConnectedContainer.style.display = isPlexConfigured ? 'flex' : 'none';
+    if (isPlexConfigured && elements.plexConnectedServerInfo) {
+      const plexTracks = state.tracks.filter(t => (t.file_path && t.file_path.startsWith('plex://')) || (t.id && t.id.startsWith('plex://'))).length;
+      const srv = plexUrl || (plexViaHost ? `Über Host (${currentHostUrl})` : 'Plex Server');
+      elements.plexConnectedServerInfo.textContent = `Server: ${srv} (${plexTracks} Songs)`;
     }
 
     const isSpotifyConnected = Boolean(cfg.spotify_access_token || cfg.spotify_user_name);
@@ -2841,20 +3585,204 @@ function setupEventListeners() {
   }
   window.updateAuthUI = updateAuthUI;
 
-  // SoundSphere Host Action Handlers
+  async function checkPlexLiveStatus() {
+    const plexToken = state.config?.plex_token || getStoredItem('plex_token') || '';
+    const plexUrl = state.config?.plex_url || getStoredItem('plex_url') || '';
+    const plexViaHost = (elements.plexViaHostToggle && elements.plexViaHostToggle.checked) || 
+                        (state.config && state.config.plex_via_host) || 
+                        (getStoredItem('plex_via_host') === 'true');
+    const hostUrl = getHostBaseUrl();
+
+    if (!plexToken && !plexViaHost && !plexUrl) {
+      if (elements.plexConnectionBadge) {
+        elements.plexConnectionBadge.textContent = '🔴 Nicht verbunden';
+        elements.plexConnectionBadge.className = 'status-pill disconnected';
+      }
+      if (elements.plexConnectedContainer) elements.plexConnectedContainer.style.display = 'none';
+      if (elements.plexLoggedOutContainer) elements.plexLoggedOutContainer.style.display = 'flex';
+      return;
+    }
+
+    try {
+      const statusUrl = getPlexApiUrl('/api/plex/status');
+      const res = await fetch(statusUrl, { signal: AbortSignal.timeout(6000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (elements.plexConnectionBadge) {
+            elements.plexConnectionBadge.textContent = '🟢 Verbunden';
+            elements.plexConnectionBadge.className = 'status-pill connected';
+          }
+          if (elements.plexConnectedContainer) elements.plexConnectedContainer.style.display = 'flex';
+          if (elements.plexLoggedOutContainer) elements.plexLoggedOutContainer.style.display = 'none';
+          if (elements.plexConnectedServerInfo) {
+            const trackCount = state.tracks.filter(t => (t.file_path && t.file_path.startsWith('plex://')) || (t.id && t.id.startsWith('plex://'))).length;
+            const sUrl = data.effective_url || plexUrl || (plexViaHost ? `Über Host (${hostUrl})` : 'Plex Server');
+            elements.plexConnectedServerInfo.textContent = `Server: ${sUrl} (${trackCount} Songs • v${data.version || 'OK'})`;
+          }
+          loadPlexSections().catch(() => {});
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // Fallback if configured but server temporarily unreachable
+    if (plexToken || (plexViaHost && hostUrl)) {
+      if (elements.plexConnectionBadge) {
+        elements.plexConnectionBadge.textContent = '🟡 Server prüfen';
+        elements.plexConnectionBadge.className = 'status-pill warning';
+      }
+    } else {
+      if (elements.plexConnectionBadge) {
+        elements.plexConnectionBadge.textContent = '🔴 Nicht verbunden';
+        elements.plexConnectionBadge.className = 'status-pill disconnected';
+      }
+    }
+  }
+  window.checkPlexLiveStatus = checkPlexLiveStatus;
+
+  async function verifyAndRestoreHostConnection(customUrl = null, customToken = null) {
+    const targetUrl = (customUrl || getHostBaseUrl()).trim().replace(/\/+$/, '');
+    const targetToken = (customToken !== null ? customToken : getHostToken());
+    if (!targetUrl) {
+      if (elements.hostConnectionBadge) {
+        elements.hostConnectionBadge.textContent = '🔴 Nicht verbunden';
+        elements.hostConnectionBadge.className = 'status-pill disconnected';
+      }
+      if (elements.hostConnectedContainer) elements.hostConnectedContainer.style.display = 'none';
+      if (elements.hostConfigContainer) elements.hostConfigContainer.style.display = 'flex';
+      return;
+    }
+
+    if (elements.hostConnectionBadge) {
+      elements.hostConnectionBadge.textContent = '🟡 Verbinde...';
+      elements.hostConnectionBadge.className = 'status-pill warning';
+    }
+
+    try {
+      const tokenQuery = targetToken ? `?token=${encodeURIComponent(targetToken)}` : '';
+      const headers = { 'Accept': 'application/json' };
+      if (targetToken) {
+        headers['X-Tonarr-Token'] = targetToken;
+        headers['X-SoundSphere-Token'] = targetToken;
+      }
+      const res = await fetch(`${targetUrl}/api/info${tokenQuery}`, { headers, signal: AbortSignal.timeout(6000) });
+      if (res.ok) {
+        const info = await res.json();
+        const hName = info.host_name || info.app || 'Tonarr Host';
+        const total = info.stats?.total_tracks || 0;
+        if (elements.hostConnectionBadge) {
+          elements.hostConnectionBadge.textContent = '🟢 Verbunden';
+          elements.hostConnectionBadge.className = 'status-pill connected';
+        }
+        if (elements.hostConnectedContainer) elements.hostConnectedContainer.style.display = 'flex';
+        if (elements.hostConfigContainer) elements.hostConfigContainer.style.display = 'none';
+        if (elements.hostConnectedServerInfo) {
+          elements.hostConnectedServerInfo.textContent = `Server: ${targetUrl} (${hName} • ${total} Songs)`;
+        }
+        if (elements.hostUrlInput) elements.hostUrlInput.value = targetUrl;
+        if (elements.hostTokenInput) elements.hostTokenInput.value = targetToken;
+        // Background sync to ensure client has latest tracks
+        syncHostLibrary(targetUrl, targetToken).catch(() => {});
+        return;
+      }
+    } catch (_) {}
+
+    // Host temporarily unreachable
+    if (elements.hostConnectionBadge) {
+      elements.hostConnectionBadge.textContent = '🔴 Host offline';
+      elements.hostConnectionBadge.className = 'status-pill disconnected';
+    }
+    if (elements.hostConnectedContainer) elements.hostConnectedContainer.style.display = 'flex';
+    if (elements.hostConfigContainer) elements.hostConfigContainer.style.display = 'none';
+    if (elements.hostConnectedServerInfo) {
+      elements.hostConnectedServerInfo.textContent = `Server: ${targetUrl} (Offline / Nicht erreichbar)`;
+    }
+  }
+  window.verifyAndRestoreHostConnection = verifyAndRestoreHostConnection;
+
+  async function scanForHosts(containerEl) {
+    if (!containerEl) return;
+    containerEl.style.display = 'flex';
+    containerEl.innerHTML = `
+      <div style="padding:14px; background:rgba(139,92,246,0.1); border:1px solid rgba(139,92,246,0.3); border-radius:var(--radius-md); text-align:center;">
+        <span style="font-size:0.88rem; color:#c4b5fd;">⏳ Scanne lokales Netzwerk nach SoundSphere / Tonarr Host (Port 8765)...</span>
+      </div>
+    `;
+
+    try {
+      const res = await fetch('/api/host/discover');
+      if (res.ok) {
+        const data = await res.json();
+        const hosts = data.hosts || [];
+        if (hosts.length === 0) {
+          containerEl.innerHTML = `
+            <div style="padding:12px; background:rgba(0,0,0,0.25); border:1px solid var(--border-color); border-radius:var(--radius-md);">
+              <div style="font-size:0.88rem; color:#f87171; font-weight:600;">🔍 Kein Host im lokalen Netzwerk gefunden</div>
+              <div style="font-size:0.78rem; color:var(--text-muted); margin-top:4px;">Stelle sicher, dass der Host (Docker / ZimaOS) läuft und Port 8765 erreichbar ist. Du kannst die IP auch manuell eingeben.</div>
+            </div>
+          `;
+          return;
+        }
+
+        containerEl.innerHTML = `
+          <div style="font-size:0.85rem; font-weight:700; color:#c4b5fd; margin-bottom:4px;">
+            Gefundene Hosts im Netzwerk (${hosts.length}):
+          </div>
+          ${hosts.map(h => `
+            <div class="settings-subcard" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border-left:3px solid #8b5cf6;">
+              <div>
+                <div style="font-weight:700; color:#fff; font-size:0.92rem;">🖥️ ${escapeHtml(h.host_name || 'Tonarr Host')}</div>
+                <div style="font-size:0.8rem; color:#a78bfa; font-family:monospace;">${escapeHtml(h.url)}</div>
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                  ${h.total_tracks} Songs • v${h.version} ${h.auth_required ? '• 🔒 Token erforderlich' : '• 🔓 Kein Token nötig'}
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm btn-connect-discovered" data-url="${escapeHtml(h.url)}" style="background:#8b5cf6; color:#fff; font-weight:700;">
+                <span>Verbinden</span>
+              </button>
+            </div>
+          `).join('')}
+        `;
+
+        containerEl.querySelectorAll('.btn-connect-discovered').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const url = btn.getAttribute('data-url');
+            if (elements.hostUrlInput) elements.hostUrlInput.value = url;
+            showToast(`🖥️ Verbinde mit ${url}...`);
+            containerEl.style.display = 'none';
+            if (elements.btnTestHostConnection) elements.btnTestHostConnection.click();
+          });
+        });
+      } else {
+        containerEl.innerHTML = `
+          <div style="padding:10px; color:#f87171; font-size:0.85rem;">Fehler bei der Host-Suche (HTTP ${res.status}).</div>
+        `;
+      }
+    } catch (err) {
+      containerEl.innerHTML = `
+        <div style="padding:10px; color:#f87171; font-size:0.85rem;">Verbindungsfehler beim Scannen nach Hosts.</div>
+      `;
+    }
+  }
+
+  // Tonarr Host Action Handlers
   async function syncHostLibrary(customUrl = null, customToken = null) {
     const hostUrl = (customUrl || getHostBaseUrl()).trim().replace(/\/+$/, '');
     const token = (customToken !== null ? customToken : getHostToken());
     if (!hostUrl) {
-      showToast('Bitte zuerst SoundSphere Host URL konfigurieren.');
+      showToast('Bitte zuerst Tonarr Host URL konfigurieren.');
       return;
     }
-    if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '⏳ Synchronisiere SoundSphere Host Mediathek...';
-    showToast('🔄 Synchronisiere SoundSphere Host...');
+    if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '⏳ Synchronisiere Tonarr Host Mediathek...';
+    showToast('🔄 Synchronisiere Tonarr Host...');
     try {
       const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
       const headers = { 'Accept': 'application/json' };
-      if (token) headers['X-SoundSphere-Token'] = token;
+      if (token) {
+        headers['X-Tonarr-Token'] = token;
+        headers['X-SoundSphere-Token'] = token;
+      }
 
       const res = await fetch(`${hostUrl}/api/tracks${tokenQuery}`, { headers, signal: AbortSignal.timeout(20000) });
       if (res.ok) {
@@ -2876,7 +3804,7 @@ function setupEventListeners() {
             year: t.year || null,
             track_no: t.track_no || null,
             file_path: t.file_path || `host://${tid}`,
-            source: 'soundsphere_host',
+            source: 'tonarr_host',
             cover_url: `${hostUrl}/api/cover?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
             stream_url: `${hostUrl}/api/audio/stream?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
             lyrics_url: `${hostUrl}/api/lyrics?id=${encodeURIComponent(t.id || tid)}${tokenParam}`
@@ -2884,11 +3812,11 @@ function setupEventListeners() {
         });
 
         // Filter out existing host tracks and merge
-        const nonHostTracks = state.tracks.filter(t => t.source !== 'soundsphere_host' && !(t.file_path && t.file_path.startsWith('host://')) && !(t.id && String(t.id).startsWith('host://')));
+        const nonHostTracks = state.tracks.filter(t => !isHostTrack(t));
         state.tracks = [...nonHostTracks, ...mappedTracks];
 
         try {
-          localStorage.setItem('soundsphere_host_tracks', JSON.stringify(mappedTracks));
+          setStoredItem('host_tracks', JSON.stringify(mappedTracks));
         } catch (e) {
           console.warn('Could not cache host tracks in localStorage:', e);
         }
@@ -2919,7 +3847,7 @@ function setupEventListeners() {
       const rawUrl = elements.hostUrlInput ? elements.hostUrlInput.value.trim() : '';
       const token = elements.hostTokenInput ? elements.hostTokenInput.value.trim() : '';
       if (!rawUrl) {
-        showToast('Bitte SoundSphere Host URL eingeben.');
+        showToast('Bitte Tonarr Host URL eingeben.');
         return;
       }
       const url = rawUrl.replace(/\/+$/, '');
@@ -2927,30 +3855,43 @@ function setupEventListeners() {
 
       try {
         // Save to localStorage immediately
-        localStorage.setItem('soundsphere_host_url', url);
-        localStorage.setItem('soundsphere_host_token', token);
-        localStorage.setItem('soundsphere_host_enabled', 'true');
+        setStoredItem('host_url', url);
+        setStoredItem('host_token', token);
+        setStoredItem('host_enabled', 'true');
         if (!state.config) state.config = {};
+        state.config.tonarr_host_url = url;
         state.config.soundsphere_host_url = url;
+        state.config.tonarr_host_token = token;
         state.config.soundsphere_host_token = token;
+        state.config.tonarr_host_enabled = true;
         state.config.soundsphere_host_enabled = true;
 
         // Also notify local backend if available
         fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ soundsphere_host_url: url, soundsphere_host_token: token, soundsphere_host_enabled: true })
+          body: JSON.stringify({
+            tonarr_host_url: url,
+            soundsphere_host_url: url,
+            tonarr_host_token: token,
+            soundsphere_host_token: token,
+            tonarr_host_enabled: true,
+            soundsphere_host_enabled: true
+          })
         }).catch(() => {});
 
         // Direct test against Host API (/api/info or /api/status)
         const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
         const headers = { 'Accept': 'application/json' };
-        if (token) headers['X-SoundSphere-Token'] = token;
+        if (token) {
+          headers['X-Tonarr-Token'] = token;
+          headers['X-SoundSphere-Token'] = token;
+        }
 
         const infoRes = await fetch(`${url}/api/info${tokenQuery}`, { headers, signal: AbortSignal.timeout(7000) });
         if (infoRes.ok) {
           const info = await infoRes.json();
-          const hostName = info.host_name || info.app || 'SoundSphere Host';
+          const hostName = info.host_name || info.app || 'Tonarr Host';
           const songCount = info.stats?.total_tracks || 0;
           if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = `✅ Verbunden mit ${hostName} (${songCount} Titel auf Server)!`;
           showToast(`✅ Erfolgreich mit ${hostName} verbunden!`);
@@ -2966,7 +3907,7 @@ function setupEventListeners() {
       } catch (e) {
         console.warn('Host connection test error:', e);
         if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '❌ Verbindungsfehler (Host nicht erreichbar).';
-        showToast('❌ SoundSphere Host nicht erreichbar.');
+        showToast('❌ Tonarr Host nicht erreichbar.');
       }
     });
   }
@@ -2980,35 +3921,56 @@ function setupEventListeners() {
   if (elements.btnDisconnectHost) {
     elements.btnDisconnectHost.addEventListener('click', async () => {
       try {
-        localStorage.removeItem('soundsphere_host_url');
-        localStorage.removeItem('soundsphere_host_token');
-        localStorage.setItem('soundsphere_host_enabled', 'false');
-        localStorage.removeItem('soundsphere_host_tracks');
+        removeStoredItem('host_url');
+        removeStoredItem('host_token');
+        setStoredItem('host_enabled', 'false');
+        removeStoredItem('host_tracks');
         if (state.config) {
+          state.config.tonarr_host_url = '';
           state.config.soundsphere_host_url = '';
+          state.config.tonarr_host_token = '';
           state.config.soundsphere_host_token = '';
+          state.config.tonarr_host_enabled = false;
           state.config.soundsphere_host_enabled = false;
         }
         fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ soundsphere_host_url: '', soundsphere_host_token: '', soundsphere_host_enabled: false })
+          body: JSON.stringify({
+            tonarr_host_url: '',
+            soundsphere_host_url: '',
+            tonarr_host_token: '',
+            soundsphere_host_token: '',
+            tonarr_host_enabled: false,
+            soundsphere_host_enabled: false
+          })
         }).catch(() => {});
 
         if (elements.hostUrlInput) elements.hostUrlInput.value = '';
         if (elements.hostTokenInput) elements.hostTokenInput.value = '';
         if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = '';
         // Remove only Host tracks from library
-        state.tracks = state.tracks.filter(t => t.source !== 'soundsphere_host' && !(t.file_path && t.file_path.startsWith('host://')) && !(t.id && String(t.id).startsWith('host://')));
+        state.tracks = state.tracks.filter(t => !isHostTrack(t));
         updateBadgeCounts();
         renderTracksTable();
         renderArtistsGrid();
         renderAlbumsGrid();
         updateAuthUI();
-        showToast('🚪 SoundSphere Host getrennt.');
+        showToast('🚪 Tonarr Host getrennt.');
       } catch (e) {
         showToast('Fehler beim Trennen des Hosts.');
       }
+    });
+  }
+
+  if (elements.btnDiscoverHost) {
+    elements.btnDiscoverHost.addEventListener('click', () => {
+      scanForHosts(elements.hostDiscoveryResultsContainer);
+    });
+  }
+  if (elements.btnDiscoverHostConnected) {
+    elements.btnDiscoverHostConnected.addEventListener('click', () => {
+      scanForHosts(elements.hostDiscoveryResultsConnectedContainer);
     });
   }
 
@@ -3024,43 +3986,116 @@ function setupEventListeners() {
     });
   }
 
+  function openCenteredPlexPopup(url = 'about:blank') {
+    const width = 600;
+    const height = 700;
+    const left = window.screenLeft !== undefined
+      ? window.screenLeft + Math.max(0, (window.outerWidth - width) / 2)
+      : (window.screen.width - width) / 2;
+    const top = window.screenTop !== undefined
+      ? window.screenTop + Math.max(0, (window.outerHeight - height) / 2)
+      : (window.screen.height - height) / 2;
+
+    return window.open(
+      url,
+      'PlexOAuthWindow',
+      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=no,resizable=yes,menubar=no,toolbar=no,location=yes`
+    );
+  }
+
   if (elements.btnLoginPlexOAuth) {
     elements.btnLoginPlexOAuth.addEventListener('click', async () => {
+      // 1. Open centered popup window immediately on click gesture to prevent browser popup blockers
+      const popup = openCenteredPlexPopup();
+
       try {
         if (elements.plexStatusMsg) elements.plexStatusMsg.textContent = '⏳ Erstelle Plex Login-PIN...';
-        const res = await fetch('/api/plex/auth/pin', { method: 'POST' });
+        const callbackUrl = `${window.location.origin}/api/plex/callback`;
+        const res = await fetch('/api/plex/auth/pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_url: callbackUrl })
+        });
         if (res.ok) {
           const data = await res.json();
           if (data.auth_url) {
-            window.open(data.auth_url, '_blank');
-            if (elements.plexStatusMsg) elements.plexStatusMsg.textContent = '🌐 Bitte autorisiere SoundSphere im geöffneten Browserfenster...';
+            if (popup && !popup.closed) {
+              popup.location.href = data.auth_url;
+              try { popup.focus(); } catch (e) {}
+            } else {
+              window.open(data.auth_url, '_blank');
+            }
+            if (elements.plexStatusMsg) {
+              elements.plexStatusMsg.innerHTML = `🌐 Bitte autorisiere SoundSphere im geöffneten Anmeldefenster... (PIN: <strong>${escapeHtml(data.code || '')}</strong>)`;
+            }
             
             let attempts = 0;
+            let finished = false;
+
+            const handleSuccess = async () => {
+              if (finished) return;
+              finished = true;
+              if (pollInterval) clearInterval(pollInterval);
+              window.removeEventListener('message', onPlexMessage);
+              if (popup && !popup.closed) {
+                try { popup.close(); } catch (e) {}
+              }
+              if (elements.plexStatusMsg) elements.plexStatusMsg.textContent = `✅ Verbunden mit Plex! Songs werden synchronisiert...`;
+              showToast(`📺 Erfolgreich mit Plex verbunden!`);
+              await fetchConfig();
+              if (typeof checkPlexLiveStatus === 'function') await checkPlexLiveStatus();
+              if (typeof updateAuthUI === 'function') updateAuthUI();
+              await scanMusicFolders();
+              await loadImportPlaylists('plex');
+            };
+
+            const onPlexMessage = async (e) => {
+              if (e && e.data && e.data.type === 'PLEX_AUTH_SUCCESS') {
+                try {
+                  const checkRes = await fetch(`/api/plex/auth/check?pin_id=${data.pin_id}&code=${encodeURIComponent(data.code || '')}`);
+                  if (checkRes.ok) {
+                    const checkData = await checkRes.json();
+                    if (checkData.authorized) {
+                      await handleSuccess();
+                    }
+                  }
+                } catch (err) {}
+              }
+            };
+            window.addEventListener('message', onPlexMessage);
+
             const pollInterval = setInterval(async () => {
+              if (finished) {
+                clearInterval(pollInterval);
+                return;
+              }
               attempts++;
               if (attempts > 90) {
                 clearInterval(pollInterval);
+                window.removeEventListener('message', onPlexMessage);
+                if (popup && !popup.closed) {
+                  try { popup.close(); } catch(e) {}
+                }
                 if (elements.plexStatusMsg) elements.plexStatusMsg.textContent = '❌ Zeitüberschreitung beim Plex Login.';
                 return;
               }
               try {
-                const checkRes = await fetch(`/api/plex/auth/check?pin_id=${data.pin_id}`);
+                const checkRes = await fetch(`/api/plex/auth/check?pin_id=${data.pin_id}&code=${encodeURIComponent(data.code || '')}`);
                 if (checkRes.ok) {
                   const checkData = await checkRes.json();
                   if (checkData.authorized) {
-                    clearInterval(pollInterval);
-                    if (elements.plexStatusMsg) elements.plexStatusMsg.textContent = `✅ Verbunden mit Plex! Songs werden synchronisiert...`;
-                    showToast(`📺 Erfolgreich mit Plex verbunden!`);
-                    await fetchConfig();
-                    await scanMusicFolders();
-                    await loadImportPlaylists('plex');
+                    await handleSuccess();
                   }
                 }
               } catch (err) {}
-            }, 2000);
+            }, 1500);
           }
+        } else {
+          if (popup && !popup.closed) popup.close();
+          if (elements.plexStatusMsg) elements.plexStatusMsg.textContent = '❌ Fehler beim Erstellen der Plex-PIN.';
         }
       } catch (err) {
+        if (popup && !popup.closed) popup.close();
         if (elements.plexStatusMsg) elements.plexStatusMsg.textContent = '❌ Fehler beim Starten des Plex Logins.';
       }
     });
@@ -3096,7 +4131,7 @@ function setupEventListeners() {
       if (elements.plexStatusMsg) elements.plexStatusMsg.textContent = '⏳ Synchronisiere Plex Mediathek...';
       showToast('🔄 Synchronisiere Plex Mediathek...');
       try {
-        const res = await fetch('/api/plex/sync', { method: 'POST' });
+        const res = await fetch(getPlexApiUrl('/api/plex/sync'), { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
           if (data.tracks) {
@@ -3132,12 +4167,12 @@ function setupEventListeners() {
       }
       if (elements.plexStatusMsg) elements.plexStatusMsg.textContent = '⏳ Teste Plex Verbindung...';
       try {
-        await fetch('/api/config', {
+        await fetch(getApiEndpoint('/api/config'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ plex_url: url, plex_token: token, plex_enabled: true })
         });
-        const res = await fetch('/api/plex/status');
+        const res = await fetch(getPlexApiUrl('/api/plex/status'));
         if (res.ok) {
           const status = await res.json();
           if (status.success) {
@@ -3165,7 +4200,7 @@ function setupEventListeners() {
           const data = await res.json();
           if (data.auth_url) {
             window.open(data.auth_url, '_blank');
-            if (elements.spotifyStatusMsg) elements.spotifyStatusMsg.textContent = '🌐 Bitte im Browserfenster anmelden & SoundSphere autorisieren...';
+            if (elements.spotifyStatusMsg) elements.spotifyStatusMsg.textContent = '🌐 Bitte im Browserfenster anmelden & Tonarr autorisieren...';
             
             let attempts = 0;
             const pollInterval = setInterval(async () => {
@@ -3179,20 +4214,20 @@ function setupEventListeners() {
                 const statRes = await fetch('/api/spotify/status');
                 if (statRes.ok) {
                   const stat = await statRes.json();
-                  if (stat.connected && stat.display_name) {
+                  if (stat.connected) {
                     clearInterval(pollInterval);
-                    if (elements.spotifyStatusMsg) elements.spotifyStatusMsg.textContent = `✅ Angemeldet als ${stat.display_name} (${stat.product || 'Spotify'})!`;
-                    showToast(`🟢 Spotify erfolgreich verknüpft (${stat.display_name})!`);
+                    if (elements.spotifyStatusMsg) elements.spotifyStatusMsg.textContent = `✅ Verbunden als ${stat.display_name}!`;
+                    showToast(`💚 Erfolgreich mit Spotify verbunden!`);
                     await fetchConfig();
                     await loadImportPlaylists('spotify');
                   }
                 }
-              } catch (err) {}
+              } catch (e) {}
             }, 2000);
           }
         }
       } catch (err) {
-        if (elements.spotifyStatusMsg) elements.spotifyStatusMsg.textContent = '❌ Fehler beim Starten von Spotify OAuth.';
+        if (elements.spotifyStatusMsg) elements.spotifyStatusMsg.textContent = '❌ Fehler beim Starten des Spotify Logins.';
       }
     });
   }
@@ -3225,47 +4260,33 @@ function setupEventListeners() {
     });
   }
 
-  if (elements.btnSaveSpotifyApiKeys) {
-    elements.btnSaveSpotifyApiKeys.addEventListener('click', async () => {
-      const clientId = elements.spotifyClientIdInput ? elements.spotifyClientIdInput.value.trim() : '';
-      const clientSecret = elements.spotifyClientSecretInput ? elements.spotifyClientSecretInput.value.trim() : '';
-      try {
-        await fetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ spotify_client_id: clientId, spotify_client_secret: clientSecret })
-        });
-        showToast('🔑 Spotify API-Keys gespeichert!');
-      } catch (e) {
-        showToast('Fehler beim Speichern der API-Keys.');
-      }
-    });
+  if (elements.btnSaveSpotifyApiKeys || elements.btnSaveSpotifyKeys) {
+    const btnKey = elements.btnSaveSpotifyKeys || elements.btnSaveSpotifyApiKeys;
+    if (btnKey) {
+      btnKey.addEventListener('click', async () => {
+        const clientId = elements.spotifyClientIdInput ? elements.spotifyClientIdInput.value.trim() : '';
+        const clientSecret = elements.spotifyClientSecretInput ? elements.spotifyClientSecretInput.value.trim() : '';
+        try {
+          await fetch(getApiEndpoint('/api/config'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ spotify_client_id: clientId, spotify_client_secret: clientSecret })
+          });
+          showToast('🔑 Spotify API-Keys gespeichert.');
+        } catch (e) {
+          showToast('Fehler beim Speichern der API-Keys.');
+        }
+      });
+    }
   }
 
   // Save Settings Modal
   if (elements.btnSaveSettings) {
     elements.btnSaveSettings.addEventListener('click', async () => {
-      const cfg = {
-        theme: state.theme,
-        soundsphere_host_url: elements.hostUrlInput ? elements.hostUrlInput.value.trim() : '',
-        soundsphere_host_token: elements.hostTokenInput ? elements.hostTokenInput.value.trim() : '',
-        soundsphere_host_enabled: Boolean(elements.hostUrlInput && elements.hostUrlInput.value.trim()),
-        plex_url: elements.plexUrlInput ? elements.plexUrlInput.value.trim() : '',
-        plex_token: elements.plexTokenInput ? elements.plexTokenInput.value.trim() : '',
-        spotify_client_id: elements.spotifyClientIdInput ? elements.spotifyClientIdInput.value.trim() : '',
-        spotify_client_secret: elements.spotifyClientSecretInput ? elements.spotifyClientSecretInput.value.trim() : ''
-      };
-      try {
-        await fetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(cfg)
-        });
-        showToast('⚙️ Einstellungen gespeichert!');
-        if (elements.settingsModal) elements.settingsModal.classList.remove('open');
-      } catch (e) {
-        showToast('Fehler beim Speichern der Einstellungen.');
-      }
+      saveAllSettings();
+      syncConfigToBackend(true);
+      showToast('⚙️ Einstellungen gespeichert!');
+      if (elements.settingsModal) elements.settingsModal.classList.remove('open');
     });
   }
 
@@ -3420,7 +4441,7 @@ async function loadImportPlaylists(source) {
   if (!elements.importPlaylistsList) return;
   elements.importPlaylistsList.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:20px;">Lade ${source.toUpperCase()} Playlists...</p>`;
   try {
-    const url = source === 'plex' ? '/api/plex/playlists' : '/api/spotify/playlists';
+    const url = source === 'plex' ? getPlexApiUrl('/api/plex/playlists') : '/api/spotify/playlists';
     const res = await fetch(url);
     if (res.ok) {
       const list = await res.json();
@@ -3448,7 +4469,7 @@ async function loadImportPlaylists(source) {
           btn.textContent = '⏳ Importiere...';
           try {
             const cleanId = pid.replace('plex_', '').replace('spotify_', '');
-            const tracksUrl = psource === 'plex' ? `/api/plex/playlists/${cleanId}/tracks` : `/api/spotify/playlists/${cleanId}/tracks`;
+            const tracksUrl = psource === 'plex' ? getPlexApiUrl(`/api/plex/playlists/${cleanId}/tracks`) : `/api/spotify/playlists/${cleanId}/tracks`;
             const tRes = await fetch(tracksUrl);
             let importedTracks = [];
             if (tRes.ok) {
@@ -3483,7 +4504,11 @@ async function loadImportPlaylists(source) {
               state.playlists.push(plObj);
             }
 
-            await fetch('/api/playlists', {
+            try {
+              setStoredItem('saved_playlists', JSON.stringify(state.playlists));
+            } catch (_) {}
+
+            await fetch(getApiEndpoint('/api/playlists'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ name: pname, source: psource, track_ids: trackIds })
@@ -3519,17 +4544,102 @@ async function fetchConfig() {
   }
 
   // Restore host config from localStorage if missing or not set
-  if (!cfg.soundsphere_host_url && localStorage.getItem('soundsphere_host_url')) {
-    cfg.soundsphere_host_url = localStorage.getItem('soundsphere_host_url');
-    cfg.soundsphere_host_token = localStorage.getItem('soundsphere_host_token') || '';
-    cfg.soundsphere_host_enabled = localStorage.getItem('soundsphere_host_enabled') !== 'false';
+  const storedHostUrl = getStoredItem('host_url');
+  const storedHostToken = getStoredItem('host_token');
+  const storedHostEnabled = getStoredItem('host_enabled');
+  if (!cfg.tonarr_host_url && !cfg.soundsphere_host_url && storedHostUrl) {
+    cfg.tonarr_host_url = storedHostUrl;
+    cfg.soundsphere_host_url = storedHostUrl;
+    cfg.tonarr_host_token = storedHostToken || '';
+    cfg.soundsphere_host_token = storedHostToken || '';
+    cfg.tonarr_host_enabled = storedHostEnabled !== 'false';
+    cfg.soundsphere_host_enabled = storedHostEnabled !== 'false';
   }
 
   state.config = cfg;
   state.directories = Array.isArray(cfg.directories) ? cfg.directories : (cfg.last_music_dir ? [cfg.last_music_dir] : []);
   if (cfg.theme) setTheme(cfg.theme);
-  if (elements.hostUrlInput) elements.hostUrlInput.value = cfg.soundsphere_host_url || '';
-  if (elements.hostTokenInput) elements.hostTokenInput.value = cfg.soundsphere_host_token || '';
+
+  // --- AMBIENT COVER BACKGROUND ---
+  let isAmb = false;
+  if (typeof cfg.ambient_cover_bg === 'boolean') {
+    isAmb = cfg.ambient_cover_bg;
+  }
+  const storedAmbient = getStoredItem('ambient_cover_bg');
+  if (storedAmbient === 'true') {
+    isAmb = true;
+  } else if (storedAmbient === 'false' && cfg.ambient_cover_bg !== true) {
+    isAmb = false;
+  }
+  cfg.ambient_cover_bg = isAmb;
+  setAmbientCoverBg(isAmb, false);
+
+  // --- EQUALIZER PRESET & BANDS ---
+  const storedPreset = getStoredItem('eq_preset');
+  const storedBands = getStoredItem('eq_bands');
+  const storedPreamp = getStoredItem('eq_preamp');
+  const storedLimiter = getStoredItem('eq_limiter');
+
+  let effectivePreset = 'flat';
+  if (storedPreset && storedPreset !== 'flat') {
+    effectivePreset = storedPreset;
+  } else if (cfg.eq_preset && cfg.eq_preset !== 'flat') {
+    effectivePreset = cfg.eq_preset;
+  } else if (storedPreset) {
+    effectivePreset = storedPreset;
+  } else if (cfg.eq_preset) {
+    effectivePreset = cfg.eq_preset;
+  }
+
+  cfg.eq_preset = effectivePreset;
+  setStoredItem('eq_preset', effectivePreset);
+  if (elements.eqPresetSelect) elements.eqPresetSelect.value = effectivePreset;
+
+  let effectiveBands = null;
+  if (storedBands) {
+    try {
+      const parsed = JSON.parse(storedBands);
+      if (Array.isArray(parsed) && parsed.length === 10) {
+        effectiveBands = parsed;
+      }
+    } catch (_) {}
+  }
+  if (!effectiveBands && Array.isArray(cfg.eq_bands) && cfg.eq_bands.length === 10) {
+    effectiveBands = cfg.eq_bands;
+  }
+  if (!effectiveBands && EQ_PRESETS[effectivePreset]) {
+    effectiveBands = EQ_PRESETS[effectivePreset];
+  }
+  if (effectiveBands) {
+    cfg.eq_bands = effectiveBands;
+    setStoredItem('eq_bands', JSON.stringify(effectiveBands));
+  }
+
+  if (storedPreamp !== null) {
+    const p = parseFloat(storedPreamp);
+    if (!isNaN(p)) {
+      cfg.eq_preamp = p;
+      currentPreampDb = p;
+    }
+  } else if (typeof cfg.eq_preamp === 'number') {
+    cfg.eq_preamp = cfg.eq_preamp;
+    currentPreampDb = cfg.eq_preamp;
+    setStoredItem('eq_preamp', String(cfg.eq_preamp));
+  }
+
+  if (storedLimiter !== null) {
+    cfg.eq_limiter = (storedLimiter !== 'false');
+    isLimiterEnabled = cfg.eq_limiter;
+  } else if (typeof cfg.eq_limiter === 'boolean') {
+    isLimiterEnabled = cfg.eq_limiter;
+    setStoredItem('eq_limiter', cfg.eq_limiter ? 'true' : 'false');
+  }
+
+  restoreEqualizer();
+  const currentHostUrl = cfg.tonarr_host_url || cfg.soundsphere_host_url || '';
+  const currentHostToken = cfg.tonarr_host_token || cfg.soundsphere_host_token || '';
+  if (elements.hostUrlInput) elements.hostUrlInput.value = currentHostUrl;
+  if (elements.hostTokenInput) elements.hostTokenInput.value = currentHostToken;
   if (elements.plexUrlInput) elements.plexUrlInput.value = cfg.plex_url || '';
   if (elements.plexTokenInput) elements.plexTokenInput.value = cfg.plex_token || '';
   if (elements.spotifyClientIdInput) elements.spotifyClientIdInput.value = cfg.spotify_client_id || '';
@@ -3544,7 +4654,7 @@ function renderDirectoriesList() {
   if (!state.directories || state.directories.length === 0) {
     elements.directoriesListContainer.innerHTML = `
       <div class="empty-directories-msg">
-        <span>Keine lokalen Musik-Ordner konfiguriert. Du kannst SoundSphere rein im Streaming-Modus (SoundSphere Host, Plex & Spotify) nutzen oder Verzeichnisse hinzufügen.</span>
+        <span>Keine lokalen Musik-Ordner konfiguriert. Du kannst Tonarr rein im Streaming-Modus (Tonarr Host, Plex & Spotify) nutzen oder Verzeichnisse hinzufügen.</span>
       </div>
     `;
     return;
@@ -3685,7 +4795,7 @@ async function loadInitialTracks() {
     await scanMusicFolders();
   } else if (getHostBaseUrl()) {
     // 1. Load cached host tracks immediately for zero delay
-    const cachedHost = localStorage.getItem('soundsphere_host_tracks');
+    const cachedHost = getStoredItem('host_tracks');
     if (cachedHost) {
       try {
         const parsed = JSON.parse(cachedHost);
@@ -3775,9 +4885,10 @@ window.handleAndroidBack = function() {
 
 // --- App Bootstrapping ---
 async function bootApp() {
-  const savedTheme = localStorage.getItem('soundsphere_theme') || 'dark_obsidian';
-  setTheme(savedTheme);
   initEqualizer();
+  loadAllSettings();
+  const savedTheme = getStoredItem('theme') || 'dark_obsidian';
+  setTheme(savedTheme);
   setupEventListeners();
   setupGlobalQueueDropTargets();
   setupMediaSessionHandlers();
@@ -3788,8 +4899,27 @@ async function bootApp() {
   try {
     await fetchPlaylists();
   } catch (e) {}
+
+  // Auto-restore & verify Host connection on startup
+  const savedHostUrl = state.config?.tonarr_host_url || state.config?.soundsphere_host_url || getStoredItem('host_url');
+  const savedHostToken = state.config?.tonarr_host_token || state.config?.soundsphere_host_token || getStoredItem('host_token');
+  if (savedHostUrl) {
+    verifyAndRestoreHostConnection(savedHostUrl, savedHostToken).catch(() => {});
+  }
+
+  // Auto-verify Plex connection on startup
+  const savedPlexToken = state.config?.plex_token || getStoredItem('plex_token');
+  if (savedPlexToken || state.config?.plex_via_host) {
+    checkPlexLiveStatus().catch(() => {});
+  }
   await loadInitialTracks();
   await restoreLastPlayback();
+  if (isAmbientCoverBgEnabled) {
+    const activeTrack = state.selectedTrack || (state.queue && state.queue[state.queueIndex]);
+    if (activeTrack) {
+      updateGlobalCoverBackdrop(getTrackCoverUrl(activeTrack));
+    }
+  }
 }
 
 window.addEventListener('DOMContentLoaded', bootApp);
@@ -4404,10 +5534,14 @@ function renderAlbumsGrid() {
 function getFilteredTracks() {
   let list = state.tracks;
 
-  if (state.activeSource === 'plex') {
-    list = list.filter(t => (t.file_path && t.file_path.startsWith('plex://')) || (t.id && t.id.startsWith('plex://')));
+  if (state.activeSource === 'host') {
+    list = list.filter(t => isHostTrack(t));
+  } else if (state.activeSource === 'plex') {
+    list = list.filter(t => t.source === 'plex' || (t.file_path && t.file_path.startsWith('plex://')) || (t.id && String(t.id).startsWith('plex://')));
   } else if (state.activeSource === 'local') {
-    list = list.filter(t => !(t.file_path && t.file_path.startsWith('plex://')) && !(t.id && t.id.startsWith('plex://')));
+    list = list.filter(t => !isHostTrack(t) && t.source !== 'plex' &&
+      !(t.file_path && t.file_path.startsWith('plex://')) &&
+      !(t.id && String(t.id).startsWith('plex://')));
   }
 
   if (state.activeView === 'favorites') {
@@ -6331,6 +7465,9 @@ function switchView(viewName, data = null, pushHistory = true) {
 
   // Update Sidebar Nav Item Highlighting
   if (elements.navBtnSongs) elements.navBtnSongs.classList.toggle('active', viewName === 'songs');
+  if (elements.navBtnHostSource) elements.navBtnHostSource.classList.toggle('active', viewName === 'host');
+  if (elements.navBtnPlexSource) elements.navBtnPlexSource.classList.toggle('active', viewName === 'plex');
+  if (elements.navBtnLocalSource) elements.navBtnLocalSource.classList.toggle('active', viewName === 'local');
   if (elements.navBtnArtists) elements.navBtnArtists.classList.toggle('active', viewName === 'artists' || viewName === 'artist_detail');
   if (elements.navBtnAlbums) elements.navBtnAlbums.classList.toggle('active', viewName === 'albums' || viewName === 'album_detail');
   if (elements.navBtnFavorites) elements.navBtnFavorites.classList.toggle('active', viewName === 'favorites');
@@ -6355,9 +7492,28 @@ function switchView(viewName, data = null, pushHistory = true) {
   });
 
   if (viewName === 'songs') {
+    state.activeSource = 'all';
     if (elements.viewSongs) elements.viewSongs.classList.add('active');
     if (elements.songsViewTitle) elements.songsViewTitle.textContent = 'Alle Titel';
     if (elements.songsViewSubtitle) elements.songsViewSubtitle.textContent = `${getFilteredTracks().length} Titel in der Mediathek`;
+    renderTracksTable();
+  } else if (viewName === 'host') {
+    state.activeSource = 'host';
+    if (elements.viewSongs) elements.viewSongs.classList.add('active');
+    if (elements.songsViewTitle) elements.songsViewTitle.textContent = 'Tonarr Host';
+    if (elements.songsViewSubtitle) elements.songsViewSubtitle.textContent = `${getFilteredTracks().length} Titel vom Host Server`;
+    renderTracksTable();
+  } else if (viewName === 'plex') {
+    state.activeSource = 'plex';
+    if (elements.viewSongs) elements.viewSongs.classList.add('active');
+    if (elements.songsViewTitle) elements.songsViewTitle.textContent = 'Plex Mediathek';
+    if (elements.songsViewSubtitle) elements.songsViewSubtitle.textContent = `${getFilteredTracks().length} Plex Titel`;
+    renderTracksTable();
+  } else if (viewName === 'local') {
+    state.activeSource = 'local';
+    if (elements.viewSongs) elements.viewSongs.classList.add('active');
+    if (elements.songsViewTitle) elements.songsViewTitle.textContent = 'Lokale Musik';
+    if (elements.songsViewSubtitle) elements.songsViewSubtitle.textContent = `${getFilteredTracks().length} lokale Titel`;
     renderTracksTable();
   } else if (viewName === 'search') {
     const searchV = document.getElementById('viewSearch');
@@ -6397,11 +7553,12 @@ window.switchView = switchView;
 async function syncAllPlaylistsAutomatically() {
   showToast('🔄 Synchronisiere alle Playlists automatisch...');
   try {
-    const res = await fetch('/api/plex/playlists/sync-all', { method: 'POST' });
+    const res = await fetch(getPlexApiUrl('/api/plex/playlists/sync-all'), { method: 'POST' });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.playlists)) {
         state.playlists = data.playlists;
+        try { setStoredItem('saved_playlists', JSON.stringify(state.playlists)); } catch (_) {}
         renderPlaylists();
       }
       if (Array.isArray(data.new_tracks) && data.new_tracks.length > 0) {
@@ -6450,7 +7607,7 @@ async function autoImportAllPlaylists(showToastNotification = false) {
 
   // 1. Restore cached playlists from localStorage immediately
   try {
-    const cached = localStorage.getItem('soundsphere_saved_playlists');
+    const cached = getStoredItem('saved_playlists');
     if (cached) {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -6464,7 +7621,7 @@ async function autoImportAllPlaylists(showToastNotification = false) {
 
   // 2. Fetch and sync ALL Plex Playlists
   try {
-    const res = await fetch('/api/plex/playlists');
+    const res = await fetch(getPlexApiUrl('/api/plex/playlists'));
     if (res.ok) {
       const list = await res.json();
       if (Array.isArray(list) && list.length > 0) {
@@ -6473,7 +7630,7 @@ async function autoImportAllPlaylists(showToastNotification = false) {
             const cleanId = String(p.id || p.plex_key || '').replace('plex_', '').replace('plex://', '');
             if (!cleanId) continue;
             
-            const tRes = await fetch(`/api/plex/playlists/${cleanId}/tracks`);
+            const tRes = await fetch(getPlexApiUrl(`/api/plex/playlists/${cleanId}/tracks`));
             let importedTracks = [];
             if (tRes.ok) {
               importedTracks = await tRes.json();
@@ -6557,7 +7714,7 @@ async function autoImportAllPlaylists(showToastNotification = false) {
 
   // 4. Save to persistent cache & render immediately
   try {
-    localStorage.setItem('soundsphere_saved_playlists', JSON.stringify(state.playlists));
+    setStoredItem('saved_playlists', JSON.stringify(state.playlists));
   } catch (e) {}
 
   renderPlaylists();
@@ -6738,7 +7895,7 @@ function setupPlaylistSidebarInteractions() {
             state.playlists.splice(insertIdx > fromIdx ? insertIdx - 1 : insertIdx, 0, moved);
             
             try {
-              localStorage.setItem('soundsphere_saved_playlists', JSON.stringify(state.playlists));
+              setStoredItem('saved_playlists', JSON.stringify(state.playlists));
             } catch (err) {}
             
             renderPlaylists();
@@ -6764,8 +7921,31 @@ function setupPlaylistSidebarInteractions() {
 // Modern Tabbed Settings & Plex Library Section Manager
 // ==========================================================================
 
-// 1. Settings Sidebar Tab Switching
+// 1. Settings Sidebar Tab Switching & Expandable Sources Menu
+window.toggleSourceAccordion = function(cardId) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const isCollapsed = card.classList.contains('collapsed');
+  card.classList.toggle('collapsed');
+
+  // Update subtab indicator active styling
+  document.querySelectorAll('.settings-subtab-btn').forEach(btn => {
+    if (btn.getAttribute('data-source-target') === cardId) {
+      btn.classList.toggle('active', isCollapsed);
+    }
+  });
+};
+
 document.addEventListener('click', (e) => {
+  // Check if arrow toggle on Sources group was clicked
+  if (e.target.closest('#sourcesGroupArrow')) {
+    e.stopPropagation();
+    const group = document.getElementById('settingsSourcesGroup');
+    if (group) group.classList.toggle('collapsed');
+    return;
+  }
+
+  // Settings Top-level tab buttons
   const tabBtn = e.target.closest('.settings-tab-btn');
   if (tabBtn) {
     const targetId = tabBtn.getAttribute('data-tab');
@@ -6775,11 +7955,59 @@ document.addEventListener('click', (e) => {
     const pane = document.getElementById(targetId);
     if (pane) pane.classList.add('active');
 
-    if (targetId === 'tab-plex') {
+    if (targetId === 'tabSources' || targetId === 'tab-plex') {
+      loadPlexSections();
+    }
+    return;
+  }
+
+  // Sources Subtab navigation buttons
+  const subtabBtn = e.target.closest('.settings-subtab-btn');
+  if (subtabBtn) {
+    const targetCardId = subtabBtn.getAttribute('data-source-target');
+    // Ensure Tab Sources is active
+    const tabBtnSources = document.getElementById('tabBtnSources');
+    if (tabBtnSources) {
+      document.querySelectorAll('.settings-tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.settings-tab-pane').forEach(p => p.classList.remove('active'));
+      tabBtnSources.classList.add('active');
+      const pane = document.getElementById('tabSources');
+      if (pane) pane.classList.add('active');
+    }
+
+    // Expand the target accordion card
+    const targetCard = document.getElementById(targetCardId);
+    if (targetCard) {
+      targetCard.classList.remove('collapsed');
+      targetCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    document.querySelectorAll('.settings-subtab-btn').forEach(b => b.classList.remove('active'));
+    subtabBtn.classList.add('active');
+
+    if (targetCardId === 'sourceCardPlex') {
       loadPlexSections();
     }
   }
 });
+
+// Wire up Host/Plex sync toggles for instant persistence
+if (elements.plexViaHostToggle) {
+  elements.plexViaHostToggle.addEventListener('change', (e) => {
+    setStoredItem('plex_via_host', e.target.checked ? 'true' : 'false');
+    saveAllSettings();
+    showToast(e.target.checked ? 'Plex wird nun über den Tonarr Host synchronisiert.' : 'Plex wird direkt synchronisiert.');
+    loadPlexSections();
+  });
+}
+
+if (elements.preferPlexMetadataToggle) {
+  elements.preferPlexMetadataToggle.addEventListener('change', (e) => {
+    setStoredItem('prefer_plex_metadata', e.target.checked ? 'true' : 'false');
+    saveAllSettings();
+    showToast(e.target.checked ? 'Plex-Metadaten werden bevorzugt.' : 'Lokale ID3-Tags werden bevorzugt.');
+  });
+}
 
 // 2. Plex Library Section Loader
 async function loadPlexSections() {
@@ -6791,11 +8019,11 @@ async function loadPlexSections() {
   }
 
   try {
-    const res = await fetch('/api/plex/sections');
+    const res = await fetch(getPlexApiUrl('/api/plex/sections'));
     if (res.ok) {
       const data = await res.json();
       const sections = data.sections || [];
-      const selected = String(data.selected_section || '');
+      const selected = String(data.selected_section || getStoredItem('plex_section') || '');
 
       if (sections.length === 0) {
         select.innerHTML = '<option value="">Keine Musik-Mediathek gefunden</option>';
@@ -6811,7 +8039,8 @@ async function loadPlexSections() {
         const chosenKey = select.value;
         if (chosenKey) {
           try {
-            await fetch('/api/plex/set-section', {
+            setStoredItem('plex_section', chosenKey);
+            await fetch(getPlexApiUrl('/api/plex/set-section'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ section_id: chosenKey })
@@ -6842,35 +8071,7 @@ if (btnRefreshSections) {
 
 // Update Plex connection badge and containers
 function updatePlexAuthStatusUI(connected, serverInfo = '') {
-  const badge = document.getElementById('plexConnectionBadge');
-  const loggedInContainer = document.getElementById('plexConnectedContainer');
-  const loggedOutContainer = document.getElementById('plexLoggedOutContainer');
-  const infoText = document.getElementById('plexConnectedServerInfo');
-
-  if (connected) {
-    if (badge) {
-      badge.className = 'status-pill connected';
-      badge.textContent = '🟢 Verbunden mit Plex';
-    }
-    if (loggedInContainer) loggedInContainer.style.display = 'flex';
-    if (loggedOutContainer) loggedOutContainer.style.display = 'none';
-    if (infoText && serverInfo) infoText.textContent = `Server: ${serverInfo}`;
-    loadPlexSections();
-  } else {
-    if (badge) {
-      badge.className = 'status-pill disconnected';
-      badge.textContent = '🔴 Nicht verbunden';
-    }
-    if (loggedInContainer) loggedInContainer.style.display = 'none';
-    if (loggedOutContainer) loggedOutContainer.style.display = 'flex';
-  }
+  updateAuthUI();
+  checkPlexLiveStatus();
 }
 window.updatePlexAuthStatusUI = updatePlexAuthStatusUI;
-
-// Hook into openSettingsModal
-if (elements.btnOpenSettings) {
-  elements.btnOpenSettings.addEventListener('click', () => {
-    const isPlexConnected = !!(state.config && state.config.plex_token);
-    updatePlexAuthStatusUI(isPlexConnected, state.config?.plex_url || '');
-  });
-}

@@ -1,13 +1,13 @@
-# SoundSphere Player 🎵
+# Tonarr Player 🎵
 
-A modern, high-performance web and desktop music player designed for seamless audio playback, synchronized lyrics, and direct integration with your **SoundSphere Host** music server.
+A modern, high-performance web and desktop music player designed for seamless audio playback, synchronized lyrics, and direct integration with your **Tonarr Host** music server.
 
 ---
 
 ## ✨ Current Features
 
 - **Host Library Sync & Streaming**:
-  - Direct integration with [SoundSphere Host](https://github.com/Tonarr-Audio/Host) via REST API.
+  - Direct integration with [Tonarr Host](https://github.com/Tonarr-Audio/Host) via REST API.
   - Full HTTP range-request audio streaming (seekable playback for MP3, FLAC, M4A, OGG, OPUS, WAV).
   - Automatic album artwork extraction and caching.
   - Browse library by **Songs**, **Artists**, **Albums**, and **Playlists**.
@@ -27,7 +27,7 @@ A modern, high-performance web and desktop music player designed for seamless au
   - Sleek dark aesthetic with dynamic ambient background glow based on album cover colors.
   - Responsive design optimized for both desktop windows and touch screens.
 - **Flexible Deployment**:
-  - Standalone portable Windows desktop application (`SoundSphere-Player.exe`).
+  - Standalone portable Windows desktop application (`Tonarr-Player.exe`).
   - Zero-dependency static web application (`index.html`, `app.js`, `style.css`).
 
 ---
@@ -44,12 +44,12 @@ A modern, high-performance web and desktop music player designed for seamless au
 
 ### 1. Standalone Windows Desktop App (.exe)
 Download the latest pre-compiled release from the [Releases](https://github.com/Tonarr-Audio/Player/releases) section:
-1. Download `SoundSphere-Player-v1.0.0-windows.zip`.
+1. Download `Tonarr-Player-v1.0.0-windows.zip`.
 2. Extract the archive to any folder.
-3. Run `SoundSphere-Player.exe`.
+3. Run `Tonarr-Player.exe`.
 
 ### 2. Running as a Web App
-SoundSphere Player consists of static web assets (`index.html`, `app.js`, `style.css`). You can open `index.html` directly in any modern browser or serve it using any HTTP server:
+Tonarr Player consists of static web assets (`index.html`, `app.js`, `style.css`). You can open `index.html` directly in any modern browser or serve it using any HTTP server:
 ```bash
 python -m http.server 8080
 ```
@@ -57,11 +57,11 @@ Then navigate to `http://localhost:8080` in your browser.
 
 ---
 
-## ⚙️ Connecting to SoundSphere Host
+## ⚙️ Connecting to Tonarr Host
 
 To stream music and fetch artwork/lyrics from your server:
 1. Open **Settings** (⚙️ gear icon) in the Player.
-2. In the **SoundSphere Host** section:
+2. In the **Tonarr Host** section:
    - Enter your **Host URL** (e.g. `http://192.168.1.100:8765` or your domain).
    - Enter your **API Token** (if authentication is enabled on the host).
 3. Click **Verbindung testen** (Test Connection) to verify reachability.
