@@ -76,7 +76,7 @@ function getTrackStreamUrl(track) {
     const token = getHostToken();
     const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
     const trackId = track.host_id || (track.id ? String(track.id).replace(/^host:\/\//, '') : '');
-    return `${hostBase}/api/audio/stream?id=${encodeURIComponent(trackId)}&path=${encodeURIComponent(track.file_path || '')}${tokenParam}`;
+    return `${hostBase}/api/audio/stream?id=${encodeURIComponent(trackId)}${tokenParam}`;
   }
   return `/api/audio/stream?path=${encodeURIComponent(track.file_path || track.id || '')}`;
 }
@@ -542,10 +542,19 @@ function initEqualizer() {
 }
 
 function setupAudioContext() {
-  if (audioCtx) return;
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+    return;
+  }
   try {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
     audioCtx = new AudioContextClass();
+    if (elements.audioElement) {
+      elements.audioElement.crossOrigin = 'anonymous';
+    }
     const source = audioCtx.createMediaElementSource(elements.audioElement);
     
     eqFilters = EQ_FREQUENCIES.map((freq, idx) => {
@@ -563,7 +572,7 @@ function setupAudioContext() {
     });
     prevNode.connect(audioCtx.destination);
   } catch (err) {
-    console.warn('Web Audio API not initialized:', err);
+    console.warn('Web Audio API not initialized (using direct audio output):', err);
   }
 }
 
@@ -1739,7 +1748,12 @@ async function selectTrack(track, autoPlay = true) {
   // Load Audio
   setupAudioContext();
   const streamSrc = getTrackStreamUrl(track);
-  elements.audioElement.src = streamSrc;
+  if (elements.audioElement) {
+    elements.audioElement.crossOrigin = 'anonymous';
+    if (elements.audioElement.muted) elements.audioElement.muted = false;
+    if (elements.audioElement.volume === 0) elements.audioElement.volume = 1;
+    elements.audioElement.src = streamSrc;
+  }
   
   if (!autoPlay && state.pendingResumeTime > 0) {
     const dur = track.duration || 0;
@@ -1938,6 +1952,9 @@ function parseLrc(lrcText) {
 
 function togglePlay() {
   if (!elements.audioElement) return;
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
   if (!elements.audioElement.src || elements.audioElement.src === window.location.href) {
     if (state.selectedTrack) selectTrack(state.selectedTrack, true);
     else if (state.tracks.length > 0) selectTrack(state.tracks[0], true);
@@ -2860,9 +2877,9 @@ function setupEventListeners() {
             track_no: t.track_no || null,
             file_path: t.file_path || `host://${tid}`,
             source: 'soundsphere_host',
-            cover_url: `${hostUrl}/api/cover?id=${encodeURIComponent(t.id || tid)}&path=${encodeURIComponent(t.file_path || '')}${tokenParam}`,
-            stream_url: `${hostUrl}/api/audio/stream?id=${encodeURIComponent(t.id || tid)}&path=${encodeURIComponent(t.file_path || '')}${tokenParam}`,
-            lyrics_url: `${hostUrl}/api/lyrics?id=${encodeURIComponent(t.id || tid)}&path=${encodeURIComponent(t.file_path || '')}${tokenParam}`
+            cover_url: `${hostUrl}/api/cover?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
+            stream_url: `${hostUrl}/api/audio/stream?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
+            lyrics_url: `${hostUrl}/api/lyrics?id=${encodeURIComponent(t.id || tid)}${tokenParam}`
           };
         });
 
