@@ -62,7 +62,8 @@ function isHostTrack(track) {
   if (!track) return false;
   return track.source === 'tonarr_host' || track.source === 'soundsphere_host' ||
          (track.file_path && track.file_path.startsWith('host://')) ||
-         (track.id && String(track.id).startsWith('host://'));
+         (track.id && String(track.id).startsWith('host://')) ||
+         Boolean(track.host_id);
 }
 
 function isPlexTrack(track) {
@@ -176,13 +177,23 @@ window.getPlexApiUrl = getPlexApiUrl;
 
 function getTrackCoverUrl(track) {
   if (!track) return '';
-  if (track.cover_url) return track.cover_url;
+  if (track.cover_url) {
+    if (track.cover_url.startsWith('http://') || track.cover_url.startsWith('https://')) {
+      return track.cover_url;
+    }
+    const hostBase = getHostBaseUrl();
+    if (hostBase && (track.cover_url.startsWith('/api/') || track.cover_url.startsWith('api/'))) {
+      const sep = track.cover_url.startsWith('/') ? '' : '/';
+      return `${hostBase}${sep}${track.cover_url}`;
+    }
+    return track.cover_url;
+  }
   const isHost = isHostTrack(track);
   const hostBase = getHostBaseUrl();
-  if (isHost && hostBase) {
+  if ((isHost || (hostBase && isPlexTrack(track))) && hostBase) {
     const token = getHostToken();
     const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-    const trackId = track.host_id || (track.id ? String(track.id).replace(/^host:\/\//, '') : '');
+    const trackId = track.host_id || (track.id ? String(track.id).replace(/^host:\/\//, '') : (track.plex_key ? `plex_${track.plex_key}` : ''));
     return `${hostBase}/api/cover?id=${encodeURIComponent(trackId)}&path=${encodeURIComponent(track.file_path || '')}${tokenParam}`;
   }
   return `/api/track/cover?path=${encodeURIComponent(track.file_path || track.id || '')}`;
@@ -191,19 +202,35 @@ window.getTrackCoverUrl = getTrackCoverUrl;
 
 function getTrackStreamUrl(track) {
   if (!track) return '';
-  if (track.stream_url) return track.stream_url;
+  if (track.stream_url) {
+    if (track.stream_url.startsWith('http://') || track.stream_url.startsWith('https://')) {
+      return track.stream_url;
+    }
+    const hostBase = getHostBaseUrl();
+    if (hostBase && (track.stream_url.startsWith('/api/') || track.stream_url.startsWith('api/'))) {
+      const sep = track.stream_url.startsWith('/') ? '' : '/';
+      return `${hostBase}${sep}${track.stream_url}`;
+    }
+    return track.stream_url;
+  }
   if (track.file_path && track.file_path.startsWith('content://')) return track.file_path;
   const isHost = isHostTrack(track);
   const hostBase = getHostBaseUrl();
-  if (isHost && hostBase) {
+  if ((isHost || (hostBase && isPlexTrack(track))) && hostBase) {
     const token = getHostToken();
     const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-    const trackId = track.host_id || (track.id ? String(track.id).replace(/^host:\/\//, '') : '');
+    const trackId = track.host_id || (track.id ? String(track.id).replace(/^host:\/\//, '') : (track.plex_key ? `plex_${track.plex_key}` : ''));
     return `${hostBase}/api/audio/stream?id=${encodeURIComponent(trackId)}${tokenParam}`;
   }
   return `/api/audio/stream?path=${encodeURIComponent(track.file_path || track.id || '')}`;
 }
 window.getTrackStreamUrl = getTrackStreamUrl;
+
+function getArtistImageUrl(artistName) {
+  if (!artistName) return '';
+  return getApiEndpoint(`/api/artist/image?name=${encodeURIComponent(artistName)}`);
+}
+window.getArtistImageUrl = getArtistImageUrl;
 
 // DOM Element Selectors
 const $ = (id) => document.getElementById(id);
@@ -1628,7 +1655,7 @@ function renderArtistsGrid() {
   elements.artistsGrid.innerHTML = sortedArtists.map(a => `
     <div class="artist-card" data-artist="${escapeHtml(a.name)}">
       <div class="artist-avatar">
-        <img src="/api/artist/image?name=${encodeURIComponent(a.name)}" loading="lazy" alt="${escapeHtml(a.name)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+        <img src="${escapeHtml(getArtistImageUrl(a.name))}" loading="lazy" alt="${escapeHtml(a.name)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
         <div style="display:none; width:100%; height:100%; align-items:center; justify-content:center;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
         </div>
@@ -1655,7 +1682,7 @@ function openArtistDetail(artistName) {
 
   // 1. Load artist avatar image
   if (elements.artistDetailAvatarImg) {
-    elements.artistDetailAvatarImg.src = `/api/artist/image?name=${encodeURIComponent(artistName)}`;
+    elements.artistDetailAvatarImg.src = getArtistImageUrl(artistName);
     elements.artistDetailAvatarImg.style.display = 'block';
     if (elements.artistDetailAvatarSvg) elements.artistDetailAvatarSvg.style.display = 'none';
   }
@@ -1824,6 +1851,13 @@ function getPlaylistCoverUrl(pl) {
     );
     if (track) {
       return getTrackCoverUrl(track);
+    }
+    const hostBase = getHostBaseUrl();
+    if (hostBase) {
+      const token = getHostToken();
+      const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+      const cleanTid = firstTid.replace(/^host:\/\//, '');
+      return `${hostBase}/api/cover?id=${encodeURIComponent(cleanTid)}${tokenParam}`;
     }
     return `/api/track/cover?path=${encodeURIComponent(firstTid)}`;
   }
@@ -4034,6 +4068,14 @@ function setupEventListeners() {
         renderAlbumsGrid();
         updateAuthUI(state.config);
 
+        // Auto-sync Host and Plex playlists immediately with the library
+        try {
+          await fetchPlaylists();
+          await autoImportAllPlaylists();
+        } catch (e) {
+          console.warn('Playlist auto-sync error after host sync:', e);
+        }
+
         if (elements.hostStatusMsg) elements.hostStatusMsg.textContent = `✅ ${mappedTracks.length} Host Songs synchronisiert!`;
         showToast(`✅ ${mappedTracks.length} Host Songs erfolgreich synchronisiert!`);
       } else {
@@ -5673,7 +5715,7 @@ function renderArtistsGrid() {
     const html = chunk.map(a => `
       <div class="artist-card" data-artist="${escapeHtml(a.name)}">
         <div class="artist-avatar">
-          <img src="/api/artist/image?name=${encodeURIComponent(a.name)}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <img src="${escapeHtml(getArtistImageUrl(a.name))}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
           <div style="display:none; width:100%; height:100%; align-items:center; justify-content:center; background:rgba(255,255,255,0.05); border-radius:50%;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:36px; height:36px; color:var(--text-dim);"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
           </div>
@@ -5739,7 +5781,7 @@ function renderAlbumsGrid() {
     const html = chunk.map(a => `
       <div class="album-card" data-album="${escapeHtml(a.title)}" data-artist="${escapeHtml(a.artist)}">
         <div class="album-cover">
-          <img src="/api/track/cover?path=${encodeURIComponent(a.firstTrack.file_path)}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <img src="${escapeHtml(getTrackCoverUrl(a.firstTrack))}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
           <div style="display:none; width:100%; height:100%; align-items:center; justify-content:center; background:rgba(255,255,255,0.05);">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:36px; height:36px; color:var(--text-dim);"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
           </div>
@@ -7079,7 +7121,7 @@ function renderAlbumsGrid() {
     const html = chunk.map(a => `
       <div class="album-card" draggable="true" data-album="${escapeHtml(a.title)}" data-artist="${escapeHtml(a.artist)}">
         <div class="album-cover">
-          <img src="/api/track/cover?path=${encodeURIComponent(a.firstTrack.file_path)}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <img src="${escapeHtml(getTrackCoverUrl(a.firstTrack))}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
           <div style="display:none; width:100%; height:100%; align-items:center; justify-content:center; background:rgba(255,255,255,0.05);">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:36px; height:36px; color:var(--text-dim);"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
           </div>
@@ -8089,8 +8131,9 @@ function getPlaylistCoverUrl(pl) {
   if (Array.isArray(pl.track_ids) && pl.track_ids.length > 0) {
     for (const tid of pl.track_ids) {
       const track = state.tracks.find(t => t.id === tid || t.file_path === tid || (t.plex_key && `plex_${t.plex_key}` === tid));
-      if (track && (track.cover_url || track.file_path)) {
-        return track.cover_url || `/api/track/cover?path=${encodeURIComponent(track.file_path)}`;
+      if (track) {
+        const cUrl = getTrackCoverUrl(track);
+        if (cUrl) return cUrl;
       }
     }
   }
