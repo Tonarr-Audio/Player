@@ -179,7 +179,9 @@ function getTrackCoverUrl(track) {
     const hostBase = getHostBaseUrl();
     if (hostBase && (track.cover_url.startsWith('/api/') || track.cover_url.startsWith('api/'))) {
       const sep = track.cover_url.startsWith('/') ? '' : '/';
-      return `${hostBase}${sep}${track.cover_url}`;
+      const token = getHostToken();
+      const tokenParam = (token && !track.cover_url.includes('token=')) ? (track.cover_url.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`) : '';
+      return `${hostBase}${sep}${track.cover_url}${tokenParam}`;
     }
     return track.cover_url;
   }
@@ -204,7 +206,9 @@ function getTrackStreamUrl(track) {
     const hostBase = getHostBaseUrl();
     if (hostBase && (track.stream_url.startsWith('/api/') || track.stream_url.startsWith('api/'))) {
       const sep = track.stream_url.startsWith('/') ? '' : '/';
-      return `${hostBase}${sep}${track.stream_url}`;
+      const token = getHostToken();
+      const tokenParam = (token && !track.stream_url.includes('token=')) ? (track.stream_url.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`) : '';
+      return `${hostBase}${sep}${track.stream_url}${tokenParam}`;
     }
     return track.stream_url;
   }
