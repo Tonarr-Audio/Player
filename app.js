@@ -78,6 +78,51 @@ function isPlexTrack(track) {
   return false;
 }
 
+function getTrackQualityInfo(track) {
+  if (!track) return { label: '', className: '', isLossless: false, isHiRes: false };
+  const ext = (track.extension || (track.file_name ? '.' + track.file_name.split('.').pop() : '')).toLowerCase().replace('.', '');
+  const codec = (track.codec || track.audio_codec || ext).toUpperCase();
+  
+  const isLossless = Boolean(
+    track.is_lossless || 
+    ['flac', 'wav', 'alac', 'aiff', 'dsd'].includes(ext) || 
+    ['FLAC', 'ALAC', 'WAV', 'AIFF', 'DSD'].includes(codec)
+  );
+  
+  const bitDepth = track.bit_depth || (track.bits_per_sample ? parseInt(track.bits_per_sample, 10) : null);
+  const sampleRate = track.sample_rate || (track.sampling_rate ? parseInt(track.sampling_rate, 10) : null);
+  const isHiRes = Boolean(
+    track.is_hi_res || 
+    (isLossless && ((bitDepth && bitDepth > 16) || (sampleRate && sampleRate > 48000)))
+  );
+
+  let label = track.quality_str || '';
+  if (!label) {
+    if (isHiRes) {
+      const parts = [codec || 'FLAC'];
+      if (bitDepth) parts.push(`${bitDepth}-Bit`);
+      if (sampleRate) parts.push(`${(sampleRate / 1000).toFixed(sampleRate % 1000 === 0 ? 0 : 1)} kHz`);
+      label = parts.join(' ');
+    } else if (isLossless) {
+      const parts = [codec || 'LOSSLESS'];
+      if (bitDepth && sampleRate) {
+        parts.push(`${bitDepth}B/${(sampleRate / 1000).toFixed(1)}k`);
+      }
+      label = parts.join(' ');
+    } else if (track.bitrate) {
+      label = `${codec || 'MP3'} ${track.bitrate}k`;
+    } else if (codec) {
+      label = codec;
+    } else if (ext) {
+      label = ext.toUpperCase();
+    }
+  }
+
+  const className = isHiRes ? 'hi-res' : (isLossless ? 'lossless' : '');
+  return { label: label || 'AUDIO', className, isLossless, isHiRes };
+}
+window.getTrackQualityInfo = getTrackQualityInfo;
+
 function isPlexOnlyPlayerSource() {
   const stored = getStoredItem('plex_as_only_player_source');
   if (stored !== null) return stored === 'true';
@@ -281,6 +326,7 @@ const elements = {
   spCoverImgBack: $('spCoverImgBack'),
   spCoverFallback: $('spCoverFallback'),
   spTitle: $('spTitle'),
+  spQualityBadge: $('spQualityBadge'),
   spArtist: $('spArtist'),
   playerHeartBtn: $('playerHeartBtn'),
   shuffleBtn: $('shuffleBtn'),
@@ -321,6 +367,7 @@ const elements = {
   fsQueueToggleBtn: $('fsQueueToggleBtn'),
   btnClearFsQueue: $('btnClearFsQueue'),
   fsTitle: $('fsTitle'),
+  fsQualityBadge: $('fsQualityBadge'),
   fsArtist: $('fsArtist'),
   fsAlbum: $('fsAlbum'),
   fsCurrentTime: $('fsCurrentTime'),
@@ -1481,9 +1528,9 @@ function renderTracksTable(container = elements.tracksTableBody, tracks = getFil
   container.innerHTML = tracks.map((t, idx) => {
     const isSelected = state.selectedTrack && (state.selectedTrack.id === t.id || state.selectedTrack.file_path === t.file_path);
     const isFav = state.favorites.has(t.id || t.file_path);
-    const isLossless = (t.extension || '').toLowerCase().replace('.', '') in { flac: 1, wav: 1, alac: 1 };
-    const qClass = isLossless ? 'lossless' : '';
-    const qLabel = t.quality_str || (t.bitrate ? `${t.bitrate}k` : (t.extension || '').toUpperCase().replace('.', ''));
+    const qInfo = getTrackQualityInfo(t);
+    const qClass = qInfo.className;
+    const qLabel = qInfo.label;
 
     return `
       <tr class="${isSelected ? 'selected' : ''}" data-track-id="${escapeHtml(t.id || t.file_path)}">
@@ -1760,15 +1807,21 @@ function getPlaylistCoverUrl(pl) {
   if (pl.cover_url) return pl.cover_url;
   const isPlex = pl.source === 'plex' || (pl.id && String(pl.id).startsWith('plex_')) || pl.plex_key;
   if (isPlex) {
-    const cleanKey = pl.plex_key || (pl.id ? String(pl.id).replace('plex_', '') : '');
+    const cleanKey = pl.plex_key || (pl.id ? String(pl.id).replace(/^host:\/\//, '').replace(/^plex_/, '') : '');
     let url = `/api/playlist/cover?key=${encodeURIComponent(cleanKey)}`;
     if (pl.thumb) url += `&thumb=${encodeURIComponent(pl.thumb)}`;
     else if (pl.composite) url += `&composite=${encodeURIComponent(pl.composite)}`;
-    return url;
+    return getPlexApiUrl(url);
   }
   if (pl.track_ids && pl.track_ids.length > 0) {
-    const firstTid = pl.track_ids[0];
-    const track = state.tracks.find(t => t.id === firstTid || t.file_path === firstTid || (t.plex_key && `plex_${t.plex_key}` === firstTid));
+    const firstTid = String(pl.track_ids[0]);
+    const track = state.tracks.find(t => 
+      t.id === firstTid || 
+      t.file_path === firstTid || 
+      t.host_id === firstTid ||
+      (t.plex_key && (`plex_${t.plex_key}` === firstTid || `host://plex_${t.plex_key}` === firstTid || String(t.plex_key) === firstTid)) ||
+      (t.id && String(t.id).replace(/^host:\/\//, '') === firstTid)
+    );
     if (track) {
       return getTrackCoverUrl(track);
     }
@@ -2499,6 +2552,27 @@ async function selectTrack(track, autoPlay = true) {
   // Update bottom player bar meta
   if (elements.spTitle) elements.spTitle.textContent = track.title || 'Unbekannter Titel';
   if (elements.spArtist) elements.spArtist.textContent = track.artist || 'Unbekannter Interpret';
+
+  // Update Audio Quality Badges (Hi-Res / Lossless / Bitrate)
+  const qInfo = getTrackQualityInfo(track);
+  if (elements.spQualityBadge) {
+    if (qInfo.label) {
+      elements.spQualityBadge.textContent = qInfo.label;
+      elements.spQualityBadge.className = `quality-tag ${qInfo.className}`.trim();
+      elements.spQualityBadge.style.display = 'inline-block';
+    } else {
+      elements.spQualityBadge.style.display = 'none';
+    }
+  }
+  if (elements.fsQualityBadge) {
+    if (qInfo.label) {
+      elements.fsQualityBadge.textContent = qInfo.label;
+      elements.fsQualityBadge.className = `quality-tag ${qInfo.className}`.trim();
+      elements.fsQualityBadge.style.display = 'inline-block';
+    } else {
+      elements.fsQualityBadge.style.display = 'none';
+    }
+  }
 
   const coverUrl = getTrackCoverUrl(track);
   
@@ -3901,7 +3975,16 @@ function setupEventListeners() {
             plex_key: t.plex_key || (String(t.id || '').startsWith('plex_') ? String(t.id).replace('plex_', '') : null),
             cover_url: `${hostUrl}/api/cover?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
             stream_url: `${hostUrl}/api/audio/stream?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
-            lyrics_url: `${hostUrl}/api/lyrics?id=${encodeURIComponent(t.id || tid)}${tokenParam}`
+            lyrics_url: `${hostUrl}/api/lyrics?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
+            bitrate: t.bitrate || null,
+            sample_rate: t.sample_rate || null,
+            bit_depth: t.bit_depth || null,
+            channels: t.channels || 2,
+            codec: t.codec || t.audio_codec || (t.extension ? t.extension.replace('.', '').toUpperCase() : ''),
+            extension: t.extension || (t.file_name ? '.' + t.file_name.split('.').pop() : ''),
+            quality_str: t.quality_str || null,
+            is_lossless: Boolean(t.is_lossless),
+            is_hi_res: Boolean(t.is_hi_res)
           };
         });
 
@@ -5131,10 +5214,10 @@ function navigateViewForward() {
 // --- Songs Grid (Alle Titel / Favoriten Kachelansicht) ---
 function renderSongCardHtml(t) {
   const isSelected = state.selectedTrack && (state.selectedTrack.id === t.id || state.selectedTrack.file_path === t.file_path);
-  const isLossless = (t.extension || '').toLowerCase().replace('.', '') in { flac: 1, wav: 1, alac: 1 };
-  const qClass = isLossless ? 'lossless' : '';
-  const qLabel = t.quality_str || (t.bitrate ? `${t.bitrate}k` : (t.extension || '').toUpperCase().replace('.', ''));
-  const coverUrl = t.cover_url || (t.file_path ? `/api/track/cover?path=${encodeURIComponent(t.file_path)}` : '');
+  const qInfo = getTrackQualityInfo(t);
+  const qClass = qInfo.className;
+  const qLabel = qInfo.label;
+  const coverUrl = getTrackCoverUrl(t);
 
   return `
     <div class="song-card ${isSelected ? 'selected' : ''}" data-track-id="${escapeHtml(t.id || t.file_path)}">
@@ -5398,10 +5481,8 @@ function attachScrollObserver(container, loadNextChunk) {
 
 function renderSongCardHtml(t) {
   const isSelected = state.selectedTrack && (state.selectedTrack.id === t.id || state.selectedTrack.file_path === t.file_path);
-  const isLossless = (t.extension || '').toLowerCase().replace('.', '') in { flac: 1, wav: 1, alac: 1 };
-  const qClass = isLossless ? 'lossless' : '';
-  const qLabel = t.quality_str || (t.bitrate ? `${t.bitrate}k` : (t.extension || '').toUpperCase().replace('.', ''));
-  const coverUrl = t.cover_url || (t.file_path ? `/api/track/cover?path=${encodeURIComponent(t.file_path)}` : '');
+  const qInfo = getTrackQualityInfo(t);
+  const coverUrl = getTrackCoverUrl(t);
 
   return `
     <div class="song-card ${isSelected ? 'selected' : ''}" data-track-id="${escapeHtml(t.id || t.file_path)}">
@@ -5418,7 +5499,7 @@ function renderSongCardHtml(t) {
         <div class="song-card-title" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</div>
         <div class="song-card-artist" title="${escapeHtml(t.artist || 'Unbekannt')}">${escapeHtml(t.artist || 'Unbekannt')}</div>
         <div class="song-card-footer">
-          <span class="quality-tag ${qClass}">${escapeHtml(qLabel)}</span>
+          <span class="quality-tag ${qInfo.className}">${escapeHtml(qInfo.label)}</span>
           <span class="song-card-duration">${t.duration_str || '00:00'}</span>
         </div>
       </div>
@@ -5478,9 +5559,8 @@ function renderSongsGrid(container = elements.songsGrid, tracks = getFilteredTra
 
 function renderTrackRowHtml(t, idx) {
   const isSelected = state.selectedTrack && (state.selectedTrack.id === t.id || state.selectedTrack.file_path === t.file_path);
-  const isLossless = (t.extension || '').toLowerCase().replace('.', '') in { flac: 1, wav: 1, alac: 1 };
-  const qClass = isLossless ? 'lossless' : '';
-  const qLabel = t.quality_str || (t.bitrate ? `${t.bitrate}k` : (t.extension || '').toUpperCase().replace('.', ''));
+  const qInfo = getTrackQualityInfo(t);
+  const coverUrl = getTrackCoverUrl(t);
 
   return `
     <tr class="${isSelected ? 'selected' : ''}" data-track-id="${escapeHtml(t.id || t.file_path)}">
@@ -5490,8 +5570,8 @@ function renderTrackRowHtml(t, idx) {
       <td>
         <div class="track-row-cell-title">
           <div class="track-row-cover">
-            <img src="/api/track/cover?path=${encodeURIComponent(t.file_path)}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none; width:18px; height:18px;"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+            ${coverUrl ? `<img src="${coverUrl}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />` : ''}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="${coverUrl ? 'display:none;' : ''} width:18px; height:18px;"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
           </div>
           <div>
             <span style="display:block; font-weight:700;">${escapeHtml(t.title)}</span>
@@ -5501,7 +5581,7 @@ function renderTrackRowHtml(t, idx) {
       <td>${escapeHtml(t.artist || 'Unbekannt')}</td>
       <td>${escapeHtml(t.album || '—')}</td>
       <td style="text-align: center;">
-        <span class="quality-tag ${qClass}">${escapeHtml(qLabel)}</span>
+        <span class="quality-tag ${qInfo.className}">${escapeHtml(qInfo.label)}</span>
       </td>
       <td style="text-align: right; font-family: var(--font-mono); font-size: 0.82rem;">${t.duration_str || '00:00'}</td>
     </tr>
@@ -7189,12 +7269,59 @@ document.addEventListener('dragstart', (e) => {
 
 async function fetchPlaylists() {
   try {
-    const res = await fetch('/api/playlists');
-    if (res.ok) {
-      const data = await res.json();
-      state.playlists = Array.isArray(data) ? data : (Array.isArray(data.playlists) ? data.playlists : []);
-      renderPlaylists();
+    const playlistsMap = new Map();
+
+    // 1. Fetch local playlists
+    try {
+      const res = await fetch('/api/playlists');
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : (Array.isArray(data.playlists) ? data.playlists : []);
+        list.forEach(p => { if (p && p.id) playlistsMap.set(p.id, p); });
+      }
+    } catch (_) {}
+
+    // 2. Fetch Host playlists if Host is connected
+    const hostBase = getHostBaseUrl();
+    if (hostBase) {
+      try {
+        const hRes = await fetch(getApiEndpoint('/api/playlists'));
+        if (hRes.ok) {
+          const hData = await hRes.json();
+          const hList = Array.isArray(hData) ? hData : (Array.isArray(hData.playlists) ? hData.playlists : []);
+          hList.forEach(p => {
+            if (p && p.id) {
+              const pid = p.id.startsWith('host_') || p.id.startsWith('plex_') ? p.id : `host_${p.id}`;
+              playlistsMap.set(pid, { ...p, id: pid, source: p.source || 'host' });
+            }
+          });
+        }
+      } catch (_) {}
     }
+
+    // 3. Fetch Plex playlists directly (via Host or direct Plex)
+    try {
+      const pRes = await fetch(getPlexApiUrl('/api/plex/playlists'));
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        const pList = Array.isArray(pData) ? pData : (Array.isArray(pData.playlists) ? pData.playlists : []);
+        pList.forEach(p => {
+          if (p && (p.id || p.plex_key)) {
+            const pid = p.id ? (String(p.id).startsWith('plex_') ? p.id : `plex_${p.id}`) : `plex_${p.plex_key}`;
+            playlistsMap.set(pid, {
+              ...p,
+              id: pid,
+              source: 'plex',
+              track_count: (p.track_ids ? p.track_ids.length : 0) || p.track_count || 0
+            });
+          }
+        });
+      }
+    } catch (_) {}
+
+    state.playlists = Array.from(playlistsMap.values());
+    try { setStoredItem('saved_playlists', JSON.stringify(state.playlists)); } catch (_) {}
+    renderPlaylists();
   } catch (err) {
     console.warn('Error fetching playlists:', err);
   }
@@ -7230,18 +7357,40 @@ async function openPlaylistDetail(pl) {
   updateCoverDisplay();
 
   let plTracks = [];
+  const hostBase = getHostBaseUrl();
+  const token = getHostToken();
+  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+  const isPlexViaHost = Boolean(hostBase && ((elements.plexViaHostToggle && elements.plexViaHostToggle.checked) || (state.config && state.config.plex_via_host) || getStoredItem('plex_via_host') === 'true' || !(elements.plexUrlInput && elements.plexUrlInput.value.trim())));
 
   // 1. If playlist is from Plex, fetch fresh tracks directly from Plex in exact order!
-  if (pl.source === 'plex' && pl.id) {
+  const isPlex = pl.source === 'plex' || (pl.id && String(pl.id).startsWith('plex_')) || pl.plex_key;
+  if (isPlex && (pl.id || pl.plex_key)) {
     try {
-      const cleanId = pl.id.replace('plex_', '');
-      const res = await fetch(`/api/plex/playlists/${cleanId}/tracks`);
+      const cleanId = String(pl.plex_key || pl.id).replace(/^host:\/\//, '').replace(/^plex_/, '').replace(/^plex:\/\//, '');
+      const res = await fetch(getPlexApiUrl(`/api/plex/playlists/${cleanId}/tracks`));
       if (res.ok) {
         const fetched = await res.json();
-        const trackList = Array.isArray(fetched) ? fetched : (fetched.tracks || []);
-        if (trackList.length > 0) {
+        const rawTrackList = Array.isArray(fetched) ? fetched : (fetched.tracks || []);
+        if (rawTrackList.length > 0) {
+          const trackList = rawTrackList.map(t => {
+            if (isPlexViaHost && hostBase) {
+              const rKey = t.plex_key || String(t.host_id || t.id).replace(/^plex_/, '');
+              return {
+                ...t,
+                id: `host://plex_${rKey}`,
+                host_id: `plex_${rKey}`,
+                plex_key: rKey,
+                source: 'host',
+                source_category: 'plex',
+                stream_url: `${hostBase}/api/plex/stream/${rKey}${tokenParam}`,
+                cover_url: `${hostBase}/api/plex/cover/${rKey}${tokenParam}`
+              };
+            }
+            return t;
+          });
+
           plTracks = trackList;
-          pl.track_ids = trackList.map(t => t.id || t.file_path);
+          pl.track_ids = trackList.map(t => t.id || t.host_id || t.file_path);
 
           // Merge newly fetched tracks into state.tracks for playback & search
           const existingIds = new Set(state.tracks.map(t => t.id || t.file_path));
@@ -7262,13 +7411,34 @@ async function openPlaylistDetail(pl) {
   if (plTracks.length === 0 && Array.isArray(pl.track_ids) && pl.track_ids.length > 0) {
     const trackMap = new Map();
     state.tracks.forEach(t => {
-      if (t.id) trackMap.set(t.id, t);
-      if (t.file_path) trackMap.set(t.file_path, t);
-      if (t.plex_key) trackMap.set(`plex_${t.plex_key}`, t);
+      if (t.id) trackMap.set(String(t.id), t);
+      if (t.file_path) trackMap.set(String(t.file_path), t);
+      if (t.host_id) trackMap.set(String(t.host_id), t);
+      if (t.plex_key) {
+        trackMap.set(String(t.plex_key), t);
+        trackMap.set(`plex_${t.plex_key}`, t);
+        trackMap.set(`host://plex_${t.plex_key}`, t);
+        trackMap.set(`plex://${t.plex_key}`, t);
+      }
+      if (t.id && String(t.id).startsWith('host://')) {
+        const sub = String(t.id).replace('host://', '');
+        trackMap.set(sub, t);
+        if (sub.startsWith('plex_')) {
+          trackMap.set(sub.replace('plex_', ''), t);
+        }
+      }
     });
 
     plTracks = pl.track_ids
-      .map(id => trackMap.get(id))
+      .map(id => {
+        const sId = String(id);
+        return trackMap.get(sId) ||
+               trackMap.get(`host://${sId}`) ||
+               trackMap.get(`plex_${sId}`) ||
+               trackMap.get(sId.replace(/^host:\/\//, '')) ||
+               trackMap.get(sId.replace(/^plex_/, '')) ||
+               trackMap.get(sId.replace(/^plex:\/\//, ''));
+      })
       .filter(Boolean);
 
     updateCoverDisplay();
@@ -7759,20 +7929,44 @@ async function autoImportAllPlaylists(showToastNotification = false) {
   try {
     const res = await fetch(getPlexApiUrl('/api/plex/playlists'));
     if (res.ok) {
-      const list = await res.json();
-      if (Array.isArray(list) && list.length > 0) {
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (Array.isArray(data.playlists) ? data.playlists : []);
+      if (list.length > 0) {
+        const hostBase = getHostBaseUrl();
+        const token = getHostToken();
+        const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+        const isPlexViaHost = Boolean(hostBase && ((elements.plexViaHostToggle && elements.plexViaHostToggle.checked) || (state.config && state.config.plex_via_host) || getStoredItem('plex_via_host') === 'true' || !(elements.plexUrlInput && elements.plexUrlInput.value.trim())));
+
         for (const p of list) {
           try {
-            const cleanId = String(p.id || p.plex_key || '').replace('plex_', '').replace('plex://', '');
+            const cleanId = String(p.plex_key || p.id || '').replace(/^host:\/\//, '').replace(/^plex_/, '').replace(/^plex:\/\//, '');
             if (!cleanId) continue;
             
             const tRes = await fetch(getPlexApiUrl(`/api/plex/playlists/${cleanId}/tracks`));
-            let importedTracks = [];
+            let rawTracks = [];
             if (tRes.ok) {
-              importedTracks = await tRes.json();
+              const resData = await tRes.json();
+              rawTracks = Array.isArray(resData) ? resData : (Array.isArray(resData.tracks) ? resData.tracks : []);
             }
 
-            if (Array.isArray(importedTracks) && importedTracks.length > 0) {
+            const importedTracks = rawTracks.map(t => {
+              if (isPlexViaHost && hostBase) {
+                const rKey = t.plex_key || String(t.host_id || t.id).replace(/^plex_/, '');
+                return {
+                  ...t,
+                  id: `host://plex_${rKey}`,
+                  host_id: `plex_${rKey}`,
+                  plex_key: rKey,
+                  source: 'host',
+                  source_category: 'plex',
+                  stream_url: `${hostBase}/api/plex/stream/${rKey}${tokenParam}`,
+                  cover_url: `${hostBase}/api/plex/cover/${rKey}${tokenParam}`
+                };
+              }
+              return t;
+            });
+
+            if (importedTracks.length > 0) {
               const existingIds = new Set(state.tracks.map(t => t.id || t.file_path));
               const newTracks = importedTracks.filter(t => !existingIds.has(t.id) && !existingIds.has(t.file_path));
               if (newTracks.length > 0) {
@@ -7781,8 +7975,8 @@ async function autoImportAllPlaylists(showToastNotification = false) {
               }
             }
 
-            const trackIds = Array.isArray(importedTracks) ? importedTracks.map(t => t.id || t.file_path) : [];
-            const pid = p.id.startsWith('plex_') ? p.id : `plex_${p.id}`;
+            const trackIds = importedTracks.map(t => t.id || t.host_id || t.file_path);
+            const pid = p.id ? (String(p.id).startsWith('plex_') ? p.id : `plex_${p.id}`) : `plex_${cleanId}`;
 
             const existingIdx = state.playlists.findIndex(pl => pl.id === pid);
             const plObj = {

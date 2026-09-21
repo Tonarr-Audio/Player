@@ -387,7 +387,10 @@
           </div>
         </div>
         <div class="sp-meta">
-          <h4 id="spTitle">Kein Song ausgewählt</h4>
+          <div class="sp-title-row" style="display: flex; align-items: center; gap: 8px;">
+            <h4 id="spTitle">Kein Song ausgewählt</h4>
+            <span id="spQualityBadge" class="quality-tag" style="display: none; font-size: 0.65rem; padding: 1px 5px;"></span>
+          </div>
           <p id="spArtist">Wähle einen Song aus der Mediathek</p>
         </div>
         <button id="playerHeartBtn" class="btn btn-icon-small btn-player-heart" title="Zu Favoriten hinzufügen">
@@ -1075,7 +1078,10 @@
         </div>
         <div class="fs-meta-box" id="fsMetaBox">
           <h1 id="fsTitle">Kein Titel</h1>
-          <h2 id="fsArtist">Unbekannter Interpret</h2>
+          <div class="fs-artist-row" style="display: flex; align-items: center; gap: 10px; margin: 4px 0 6px 0;">
+            <h2 id="fsArtist" style="margin: 0;">Unbekannter Interpret</h2>
+            <span id="fsQualityBadge" class="quality-tag" style="display: none;"></span>
+          </div>
           <p id="fsAlbum">Kein Album</p>
         </div>
       </div>
