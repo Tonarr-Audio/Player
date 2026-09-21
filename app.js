@@ -1074,18 +1074,6 @@ function syncConfigToBackend(immediate = false) {
           body: JSON.stringify(cfg)
         });
       } catch (_) {}
-
-      // 2. Remote Host if configured and different from local
-      const hostEndpoint = getApiEndpoint('/api/config');
-      if (hostEndpoint && !hostEndpoint.startsWith('/api/config')) {
-        try {
-          await fetch(hostEndpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(cfg)
-          });
-        } catch (_) {}
-      }
     } catch (_) {}
   };
   if (immediate) {
