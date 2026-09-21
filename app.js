@@ -2671,6 +2671,13 @@ async function selectTrack(track, autoPlay = true) {
   setupAudioContext();
   const streamSrc = getTrackStreamUrl(track);
   if (elements.audioElement) {
+    if (!elements.audioElement._hasErrorListener) {
+      elements.audioElement._hasErrorListener = true;
+      elements.audioElement.addEventListener('error', () => {
+        const err = elements.audioElement.error;
+        console.warn('[AudioElement] Error details:', err ? { code: err.code, message: err.message } : 'Unknown', 'src:', elements.audioElement.src);
+      });
+    }
     elements.audioElement.crossOrigin = 'anonymous';
     if (elements.audioElement.muted) elements.audioElement.muted = false;
     if (elements.audioElement.volume === 0) elements.audioElement.volume = 1;
@@ -4020,11 +4027,12 @@ function setupEventListeners() {
         
         const mappedTracks = rawTracks.map(t => {
           const tid = t.id || t.file_path || String(Math.random());
+          const cleanTrackId = String(t.host_id || t.id || tid).replace(/^host:\/\//, '');
           const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
           const isPlex = t.source === 'plex' || Boolean(t.plex_key) || String(t.file_path || '').startsWith('plex://') || String(t.id || '').startsWith('plex_');
           return {
             id: String(tid).startsWith('host://') ? tid : `host://${tid}`,
-            host_id: t.id || tid,
+            host_id: cleanTrackId,
             title: t.title || 'Unbekannter Titel',
             artist: t.artist || 'Unbekannter Interpret',
             album: t.album || 'Unbekanntes Album',
@@ -4033,12 +4041,12 @@ function setupEventListeners() {
             genre: t.genre || '',
             year: t.year || null,
             track_no: t.track_no || null,
-            file_path: t.file_path || `host://${tid}`,
+            file_path: t.file_path || `host://${cleanTrackId}`,
             source: isPlex ? 'plex' : 'tonarr_host',
-            plex_key: t.plex_key || (String(t.id || '').startsWith('plex_') ? String(t.id).replace('plex_', '') : null),
-            cover_url: `${hostUrl}/api/cover?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
-            stream_url: `${hostUrl}/api/audio/stream?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
-            lyrics_url: `${hostUrl}/api/lyrics?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
+            plex_key: t.plex_key || (String(cleanTrackId).startsWith('plex_') ? String(cleanTrackId).replace('plex_', '') : null),
+            cover_url: `${hostUrl}/api/cover?id=${encodeURIComponent(cleanTrackId)}${tokenParam}`,
+            stream_url: `${hostUrl}/api/audio/stream?id=${encodeURIComponent(cleanTrackId)}${tokenParam}`,
+            lyrics_url: `${hostUrl}/api/lyrics?id=${encodeURIComponent(cleanTrackId)}${tokenParam}`,
             bitrate: t.bitrate || null,
             sample_rate: t.sample_rate || null,
             bit_depth: t.bit_depth || null,
