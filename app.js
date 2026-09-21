@@ -4193,7 +4193,8 @@ function setupEventListeners() {
     });
   }
 
-  function openCenteredPlexPopup(url = 'about:blank') {
+  function openCenteredPlexPopup(url) {
+    if (!url) return null;
     const width = 600;
     const height = 700;
     const left = window.screenLeft !== undefined
@@ -4203,18 +4204,20 @@ function setupEventListeners() {
       ? window.screenTop + Math.max(0, (window.outerHeight - height) / 2)
       : (window.screen.height - height) / 2;
 
-    return window.open(
+    const popup = window.open(
       url,
       'PlexOAuthWindow',
       `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=no,resizable=yes,menubar=no,toolbar=no,location=yes`
     );
+    if (popup) {
+      try { popup.focus(); } catch (e) {}
+    }
+    return popup;
   }
 
   if (elements.btnLoginPlexOAuth) {
     elements.btnLoginPlexOAuth.addEventListener('click', async () => {
-      // 1. Open centered popup window immediately on click gesture to prevent browser popup blockers
-      const popup = openCenteredPlexPopup();
-
+      let popup = null;
       try {
         if (elements.plexStatusMsg) elements.plexStatusMsg.textContent = '⏳ Erstelle Plex Login-PIN...';
         const callbackUrl = `${window.location.origin}/api/plex/callback`;
@@ -4226,12 +4229,7 @@ function setupEventListeners() {
         if (res.ok) {
           const data = await res.json();
           if (data.auth_url) {
-            if (popup && !popup.closed) {
-              popup.location.href = data.auth_url;
-              try { popup.focus(); } catch (e) {}
-            } else {
-              window.open(data.auth_url, '_blank');
-            }
+            popup = openCenteredPlexPopup(data.auth_url);
             if (elements.plexStatusMsg) {
               elements.plexStatusMsg.innerHTML = `🌐 Bitte autorisiere Tonarr im geöffneten Anmeldefenster... (PIN: <strong>${escapeHtml(data.code || '')}</strong>)`;
             }
