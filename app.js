@@ -7440,6 +7440,7 @@ async function openPlaylistDetail(pl) {
   let plTracks = [];
   const hostBase = getHostBaseUrl();
   const token = getHostToken();
+  const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
   const isPlexViaHost = Boolean(hostBase);
 
   // 1. If playlist is from Plex, fetch fresh tracks directly from Plex in exact order!
@@ -7471,6 +7472,7 @@ async function openPlaylistDetail(pl) {
 
           plTracks = trackList;
           pl.track_ids = trackList.map(t => t.id || t.host_id || t.file_path);
+          pl.track_count = trackList.length;
 
           // Merge newly fetched tracks into state.tracks for playback & search
           const existingIds = new Set(state.tracks.map(t => t.id || t.file_path));
@@ -8172,7 +8174,12 @@ function renderPlaylists() {
 
     return `
       <button class="nav-item playlist-nav-item" draggable="true" data-playlist-id="${p.id}" title="${escapeHtml(p.name)}">
-        <img class="playlist-nav-thumb" src="${coverUrl}" alt="Cover" />
+        <div class="playlist-nav-cover-wrap" style="width:28px; height:28px; border-radius:4px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.06); box-shadow:0 2px 6px rgba(0,0,0,0.35); position:relative;">
+          ${coverUrl ? `<img class="playlist-nav-thumb" src="${coverUrl}" alt="" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" style="width:100%; height:100%; object-fit:cover;" />` : ''}
+          <div class="playlist-nav-fallback" style="${coverUrl ? 'display:none;' : 'display:flex;'} width:100%; height:100%; align-items:center; justify-content:center; background:linear-gradient(135deg, rgba(139,92,246,0.35), rgba(236,72,153,0.35)); font-size:11px; font-weight:700; color:#fff;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px; height:14px; opacity:0.85;"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+          </div>
+        </div>
         <span class="playlist-nav-name">${escapeHtml(p.name)}</span>
         ${badge ? `<span class="playlist-source-tag">${badge}</span>` : ''}
         <span class="nav-count">${count}</span>
