@@ -159,12 +159,7 @@ window.getApiEndpoint = getApiEndpoint;
 
 function getPlexApiUrl(endpoint) {
   const hostBase = getHostBaseUrl();
-  const plexViaHost = (elements.plexViaHostToggle && elements.plexViaHostToggle.checked) || 
-                      (state.config && state.config.plex_via_host) || 
-                      (getStoredItem('plex_via_host') === 'true') ||
-                      Boolean(hostBase && !(elements.plexUrlInput && elements.plexUrlInput.value.trim()));
-
-  if (hostBase && plexViaHost) {
+  if (hostBase) {
     const sep = endpoint.startsWith('/') ? '' : '/';
     const token = getHostToken();
     const tokenParam = token ? (endpoint.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`) : '';
@@ -1831,38 +1826,84 @@ function openAlbumDetail(albumObj) {
 // --- Playlists Management ---
 function getPlaylistCoverUrl(pl) {
   if (!pl) return '';
-  if (pl.cover_url) return pl.cover_url;
+  const hostBase = getHostBaseUrl();
+  const token = getHostToken();
+  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+
+  if (pl.cover_url && !pl.cover_url.includes('undefined')) {
+    if (pl.cover_url.startsWith('http://') || pl.cover_url.startsWith('https://')) {
+      if (hostBase && (pl.cover_url.includes('127.0.0.1:32400') || pl.cover_url.includes('localhost:32400') || pl.source === 'plex' || String(pl.id).startsWith('plex_'))) {
+        const cleanKey = pl.plex_key || (pl.id ? String(pl.id).replace(/^host:\/\//, '').replace(/^plex_/, '') : '');
+        let endpoint = `/api/playlist/cover?key=${encodeURIComponent(cleanKey)}`;
+        if (pl.thumb) endpoint += `&thumb=${encodeURIComponent(pl.thumb)}`;
+        else if (pl.composite) endpoint += `&composite=${encodeURIComponent(pl.composite)}`;
+        return `${hostBase}${endpoint}${tokenParam}`;
+      }
+      return pl.cover_url;
+    }
+    if (hostBase && (pl.cover_url.startsWith('/api/') || pl.cover_url.startsWith('api/'))) {
+      const sep = pl.cover_url.startsWith('/') ? '' : '/';
+      const sepParam = pl.cover_url.includes('?') ? '&' : '?';
+      return `${hostBase}${sep}${pl.cover_url}${token ? `${sepParam}token=${encodeURIComponent(token)}` : ''}`;
+    }
+    return pl.cover_url;
+  }
+
   const isPlex = pl.source === 'plex' || (pl.id && String(pl.id).startsWith('plex_')) || pl.plex_key;
   if (isPlex) {
     const cleanKey = pl.plex_key || (pl.id ? String(pl.id).replace(/^host:\/\//, '').replace(/^plex_/, '') : '');
     let url = `/api/playlist/cover?key=${encodeURIComponent(cleanKey)}`;
     if (pl.thumb) url += `&thumb=${encodeURIComponent(pl.thumb)}`;
     else if (pl.composite) url += `&composite=${encodeURIComponent(pl.composite)}`;
+    if (hostBase) {
+      return `${hostBase}${url}${tokenParam}`;
+    }
     return getPlexApiUrl(url);
   }
+
   if (pl.track_ids && pl.track_ids.length > 0) {
-    const firstTid = String(pl.track_ids[0]);
-    const track = state.tracks.find(t => 
-      t.id === firstTid || 
-      t.file_path === firstTid || 
-      t.host_id === firstTid ||
-      (t.plex_key && (`plex_${t.plex_key}` === firstTid || `host://plex_${t.plex_key}` === firstTid || String(t.plex_key) === firstTid)) ||
-      (t.id && String(t.id).replace(/^host:\/\//, '') === firstTid)
-    );
-    if (track) {
-      return getTrackCoverUrl(track);
+    for (const tid of pl.track_ids) {
+      const cleanTid = String(tid).replace(/^host:\/\//, '');
+      const track = state.tracks.find(t => 
+        t.id === tid || 
+        t.id === cleanTid || 
+        t.file_path === tid || 
+        t.file_path === cleanTid || 
+        t.host_id === cleanTid ||
+        (t.plex_key && (`plex_${t.plex_key}` === cleanTid || `host://plex_${t.plex_key}` === tid || String(t.plex_key) === cleanTid))
+      );
+      if (track) {
+        const cUrl = getTrackCoverUrl(track);
+        if (cUrl) return cUrl;
+      }
     }
-    const hostBase = getHostBaseUrl();
+    const firstTid = String(pl.track_ids[0]).replace(/^host:\/\//, '');
     if (hostBase) {
-      const token = getHostToken();
-      const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-      const cleanTid = firstTid.replace(/^host:\/\//, '');
-      return `${hostBase}/api/cover?id=${encodeURIComponent(cleanTid)}${tokenParam}`;
+      return `${hostBase}/api/cover?id=${encodeURIComponent(firstTid)}${tokenParam}`;
     }
     return `/api/track/cover?path=${encodeURIComponent(firstTid)}`;
   }
-  return '';
+
+  // Generate Vibrant Gradient Cover with Initials
+  const name = pl.name || 'Playlist';
+  const char = name.trim().charAt(0).toUpperCase() || '♪';
+  const colorGradients = [
+    ['#8b5cf6', '#ec4899'],
+    ['#3b82f6', '#10b981'],
+    ['#f59e0b', '#ef4444'],
+    ['#06b6d4', '#6366f1'],
+    ['#10b981', '#3b82f6'],
+    ['#a855f7', '#6366f1'],
+    ['#ec4899', '#f43f5e']
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  const pair = colorGradients[Math.abs(hash) % colorGradients.length];
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${pair[0]}"/><stop offset="100%" stop-color="${pair[1]}"/></linearGradient></defs><rect width="100" height="100" fill="url(#g)" rx="14"/><text x="50" y="58" font-family="system-ui, -apple-system, sans-serif" font-size="44" font-weight="900" fill="white" text-anchor="middle" dominant-baseline="middle">${escapeHtml(char)}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
+window.getPlaylistCoverUrl = getPlaylistCoverUrl;
 window.getPlaylistCoverUrl = getPlaylistCoverUrl;
 
 function renderPlaylists() {
@@ -7399,8 +7440,7 @@ async function openPlaylistDetail(pl) {
   let plTracks = [];
   const hostBase = getHostBaseUrl();
   const token = getHostToken();
-  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-  const isPlexViaHost = Boolean(hostBase && ((elements.plexViaHostToggle && elements.plexViaHostToggle.checked) || (state.config && state.config.plex_via_host) || getStoredItem('plex_via_host') === 'true' || !(elements.plexUrlInput && elements.plexUrlInput.value.trim())));
+  const isPlexViaHost = Boolean(hostBase);
 
   // 1. If playlist is from Plex, fetch fresh tracks directly from Plex in exact order!
   const isPlex = pl.source === 'plex' || (pl.id && String(pl.id).startsWith('plex_')) || pl.plex_key;
@@ -7975,7 +8015,7 @@ async function autoImportAllPlaylists(showToastNotification = false) {
         const hostBase = getHostBaseUrl();
         const token = getHostToken();
         const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-        const isPlexViaHost = Boolean(hostBase && ((elements.plexViaHostToggle && elements.plexViaHostToggle.checked) || (state.config && state.config.plex_via_host) || getStoredItem('plex_via_host') === 'true' || !(elements.plexUrlInput && elements.plexUrlInput.value.trim())));
+        const isPlexViaHost = Boolean(hostBase);
 
         for (const p of list) {
           try {
@@ -8018,15 +8058,18 @@ async function autoImportAllPlaylists(showToastNotification = false) {
             const trackIds = importedTracks.map(t => t.id || t.host_id || t.file_path);
             const pid = p.id ? (String(p.id).startsWith('plex_') ? p.id : `plex_${p.id}`) : `plex_${cleanId}`;
 
-            const existingIdx = state.playlists.findIndex(pl => pl.id === pid);
             const plObj = {
               id: pid,
               name: p.name || 'Plex Playlist',
               source: 'plex',
               track_ids: trackIds,
-              track_count: trackIds.length || p.track_count || 0
+              track_count: trackIds.length || p.track_count || 0,
+              thumb: p.thumb || '',
+              composite: p.composite || '',
+              cover_url: getPlaylistCoverUrl(p)
             };
 
+            const existingIdx = state.playlists.findIndex(pl => pl.id === pid);
             if (existingIdx >= 0) {
               state.playlists[existingIdx] = plObj;
             } else {
@@ -8110,54 +8153,8 @@ setTimeout(() => {
 }, 600);
 
 
+// Playlist Drag-and-Drop Reordering Engine
 // ==========================================================================
-// Playlist Thumbnail Generator & Sidebar Drag-and-Drop Reordering Engine
-// ==========================================================================
-
-function getPlaylistCoverUrl(pl) {
-  if (!pl) return '';
-  if (pl.cover_url && !pl.cover_url.includes('undefined')) return pl.cover_url;
-
-  const isPlex = pl.source === 'plex' || (pl.id && String(pl.id).startsWith('plex_')) || pl.plex_key;
-  if (isPlex) {
-    const cleanKey = pl.plex_key || (pl.id ? String(pl.id).replace('plex_', '') : '');
-    let url = `/api/playlist/cover?key=${encodeURIComponent(cleanKey)}`;
-    if (pl.thumb) url += `&thumb=${encodeURIComponent(pl.thumb)}`;
-    else if (pl.composite) url += `&composite=${encodeURIComponent(pl.composite)}`;
-    return url;
-  }
-
-  // Find first track with a cover ONLY for local/custom playlists
-  if (Array.isArray(pl.track_ids) && pl.track_ids.length > 0) {
-    for (const tid of pl.track_ids) {
-      const track = state.tracks.find(t => t.id === tid || t.file_path === tid || (t.plex_key && `plex_${t.plex_key}` === tid));
-      if (track) {
-        const cUrl = getTrackCoverUrl(track);
-        if (cUrl) return cUrl;
-      }
-    }
-  }
-
-  // Generate Vibrant Gradient Cover with Initials
-  const name = pl.name || 'Playlist';
-  const char = name.trim().charAt(0).toUpperCase() || '♪';
-  const colorGradients = [
-    ['#8b5cf6', '#ec4899'],
-    ['#3b82f6', '#10b981'],
-    ['#f59e0b', '#ef4444'],
-    ['#06b6d4', '#6366f1'],
-    ['#10b981', '#3b82f6'],
-    ['#a855f7', '#6366f1'],
-    ['#ec4899', '#f43f5e']
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  const pair = colorGradients[Math.abs(hash) % colorGradients.length];
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${pair[0]}"/><stop offset="100%" stop-color="${pair[1]}"/></linearGradient></defs><rect width="100" height="100" fill="url(#g)" rx="14"/><text x="50" y="58" font-family="system-ui, -apple-system, sans-serif" font-size="44" font-weight="900" fill="white" text-anchor="middle" dominant-baseline="middle">${escapeHtml(char)}</text></svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-window.getPlaylistCoverUrl = getPlaylistCoverUrl;
 
 function renderPlaylists() {
   if (!elements.playlistNavList) return;
