@@ -81,7 +81,10 @@ function isPlexTrack(track) {
 function isPlexOnlyPlayerSource() {
   const stored = getStoredItem('plex_as_only_player_source');
   if (stored !== null) return stored === 'true';
-  return Boolean(state.config && (state.config.plex_as_only_player_source || state.config.folder_source_for_creator_and_manager_only));
+  return Boolean(
+    (state.config && (state.config.plex_as_only_player_source || state.config.folder_source_for_creator_and_manager_only)) ||
+    (state.hostConfig && (state.hostConfig.plex_as_only_player_source || state.hostConfig.folder_source_for_creator_and_manager_only))
+  );
 }
 
 // --- Tonarr Host Helper Functions ---
@@ -1390,6 +1393,44 @@ function switchView(viewName, data = null, pushHistory = true) {
 }
 
 // --- Data Filtering & Rendering ---
+function cleanTrackText(s) {
+  if (!s) return '';
+  let txt = String(s).toLowerCase().trim();
+  txt = txt.replace(/^\d+[\s\.\-_]+/, '').trim();
+  txt = txt.replace(/\s*(feat\.?|featuring|ft\.).*$/i, '').trim();
+  txt = txt.replace(/\s*[\(\[](remastered|remaster|album version|official|deluxe|bonus|live).*?[\)\]]/gi, '').trim();
+  txt = txt.replace(/[^\p{L}\p{N}\s]/gu, '');
+  return txt.replace(/\s+/g, ' ').trim();
+}
+
+function deduplicateTracksList(list) {
+  if (!Array.isArray(list)) return [];
+  const seenPlexKeys = new Set();
+  const seenTrackNorms = new Set();
+  const seenFileNames = new Set();
+  const dedupedList = [];
+  for (const t of list) {
+    if (!t) continue;
+    const pkey = t.plex_key ? String(t.plex_key).trim() : '';
+    const normA = cleanTrackText(t.artist || '');
+    const normT = cleanTrackText(t.title || '');
+    const norm = `${normA}:::${normT}`;
+    const fname = (t.file_path || '').split(/[/\\]/).pop().toLowerCase();
+
+    if (pkey && seenPlexKeys.has(pkey)) continue;
+    if (fname && !fname.startsWith('plex:') && seenFileNames.has(fname)) continue;
+    if (normA && normT && seenTrackNorms.has(norm)) continue;
+
+    if (pkey) seenPlexKeys.add(pkey);
+    if (fname && !fname.startsWith('plex:')) seenFileNames.add(fname);
+    if (normA && normT) seenTrackNorms.add(norm);
+
+    dedupedList.push(t);
+  }
+  return dedupedList;
+}
+window.deduplicateTracksList = deduplicateTracksList;
+
 function getFilteredTracks() {
   let list = state.tracks;
 
@@ -1413,15 +1454,18 @@ function getFilteredTracks() {
   }
 
   if (state.searchQuery) {
-    const q = state.searchQuery.toLowerCase();
-    list = list.filter(t => 
-      (t.title && t.title.toLowerCase().includes(q)) ||
-      (t.artist && t.artist.toLowerCase().includes(q)) ||
-      (t.album && t.album.toLowerCase().includes(q))
-    );
+    const q = state.searchQuery.toLowerCase().trim();
+    list = list.filter(t => {
+      const title = (t.title || '').toLowerCase();
+      const artist = (t.artist || '').toLowerCase();
+      const album = (t.album || '').toLowerCase();
+      const genre = (t.genre || '').toLowerCase();
+      const path = (t.file_path || '').toLowerCase();
+      return title.includes(q) || artist.includes(q) || album.includes(q) || genre.includes(q) || path.includes(q);
+    });
   }
 
-  return list;
+  return deduplicateTracksList(list);
 }
 
 function renderTracksTable(container = elements.tracksTableBody, tracks = getFilteredTracks(), customRowClickHandler = null) {
@@ -3819,6 +3863,19 @@ function setupEventListeners() {
         headers['X-SoundSphere-Token'] = token;
       }
 
+      // Fetch host config to auto-align plex_as_only_player_source if set on host
+      try {
+        const cfgRes = await fetch(`${hostUrl}/api/config${tokenQuery}`, { headers, signal: AbortSignal.timeout(4000) });
+        if (cfgRes.ok) {
+          const hostCfg = await cfgRes.json();
+          state.hostConfig = hostCfg;
+          if (hostCfg.plex_as_only_player_source || hostCfg.folder_source_for_creator_and_manager_only) {
+            setStoredItem('plex_as_only_player_source', 'true');
+            if (elements.plexAsOnlyPlayerSourceToggle) elements.plexAsOnlyPlayerSourceToggle.checked = true;
+          }
+        }
+      } catch (_) {}
+
       const res = await fetch(`${hostUrl}/api/tracks${tokenQuery}`, { headers, signal: AbortSignal.timeout(20000) });
       if (res.ok) {
         const data = await res.json();
@@ -3827,6 +3884,7 @@ function setupEventListeners() {
         const mappedTracks = rawTracks.map(t => {
           const tid = t.id || t.file_path || String(Math.random());
           const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+          const isPlex = t.source === 'plex' || Boolean(t.plex_key) || String(t.file_path || '').startsWith('plex://') || String(t.id || '').startsWith('plex_');
           return {
             id: String(tid).startsWith('host://') ? tid : `host://${tid}`,
             host_id: t.id || tid,
@@ -3839,8 +3897,8 @@ function setupEventListeners() {
             year: t.year || null,
             track_no: t.track_no || null,
             file_path: t.file_path || `host://${tid}`,
-            source: t.source === 'plex' ? 'plex' : (t.plex_key ? 'plex' : 'tonarr_host'),
-            plex_key: t.plex_key || null,
+            source: isPlex ? 'plex' : 'tonarr_host',
+            plex_key: t.plex_key || (String(t.id || '').startsWith('plex_') ? String(t.id).replace('plex_', '') : null),
             cover_url: `${hostUrl}/api/cover?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
             stream_url: `${hostUrl}/api/audio/stream?id=${encodeURIComponent(t.id || tid)}${tokenParam}`,
             lyrics_url: `${hostUrl}/api/lyrics?id=${encodeURIComponent(t.id || tid)}${tokenParam}`
@@ -3848,13 +3906,38 @@ function setupEventListeners() {
         });
 
         const isPlexOnly = isPlexOnlyPlayerSource();
+        let targetList = [];
         if (isPlexOnly) {
-          state.tracks = mappedTracks.filter(t => isPlexTrack(t));
+          targetList = mappedTracks.filter(t => isPlexTrack(t));
         } else {
-          // Filter out existing host tracks and merge
-          const nonHostTracks = state.tracks.filter(t => !isHostTrack(t));
-          state.tracks = [...nonHostTracks, ...mappedTracks];
+          const hostNorms = new Set(mappedTracks.map(t => `${(t.artist || '').trim().toLowerCase()}:::${(t.title || '').trim().toLowerCase()}`));
+          const hostKeys = new Set(mappedTracks.map(t => t.plex_key ? String(t.plex_key) : '').filter(Boolean));
+          
+          const nonHostTracks = state.tracks.filter(t => {
+            if (isHostTrack(t)) return false;
+            const pkey = t.plex_key ? String(t.plex_key) : '';
+            if (pkey && hostKeys.has(pkey)) return false;
+            const norm = `${(t.artist || '').trim().toLowerCase()}:::${(t.title || '').trim().toLowerCase()}`;
+            if (norm.length > 5 && hostNorms.has(norm)) return false;
+            return true;
+          });
+          targetList = [...nonHostTracks, ...mappedTracks];
         }
+
+        // Strict deduplication so no song ever exists twice
+        const seenPlexKeys = new Set();
+        const seenTrackNorms = new Set();
+        const unique = [];
+        for (const t of targetList) {
+          const pkey = t.plex_key ? String(t.plex_key) : '';
+          const norm = `${(t.artist || '').trim().toLowerCase()}:::${(t.title || '').trim().toLowerCase()}`;
+          if (pkey && seenPlexKeys.has(pkey)) continue;
+          if (norm.length > 5 && seenTrackNorms.has(norm)) continue;
+          if (pkey) seenPlexKeys.add(pkey);
+          if (norm.length > 5) seenTrackNorms.add(norm);
+          unique.push(t);
+        }
+        state.tracks = unique;
 
         try {
           setStoredItem('host_tracks', JSON.stringify(mappedTracks));
@@ -4177,12 +4260,26 @@ function setupEventListeners() {
           const data = await res.json();
           if (data.tracks) {
             const isPlexOnly = isPlexOnlyPlayerSource();
+            let target = [];
             if (isPlexOnly) {
-              state.tracks = data.tracks;
+              target = data.tracks;
             } else {
               const localTracks = state.tracks.filter(t => !isPlexTrack(t));
-              state.tracks = [...localTracks, ...data.tracks];
+              target = [...localTracks, ...data.tracks];
             }
+            const seenKeys = new Set();
+            const seenNorms = new Set();
+            const unique = [];
+            for (const t of target) {
+              const pkey = t.plex_key ? String(t.plex_key) : '';
+              const norm = `${(t.artist || '').trim().toLowerCase()}:::${(t.title || '').trim().toLowerCase()}`;
+              if (pkey && seenKeys.has(pkey)) continue;
+              if (norm.length > 5 && seenNorms.has(norm)) continue;
+              if (pkey) seenKeys.add(pkey);
+              if (norm.length > 5) seenNorms.add(norm);
+              unique.push(t);
+            }
+            state.tracks = unique;
             updateBadgeCounts();
             renderTracksTable();
             renderArtistsGrid();
@@ -4788,10 +4885,11 @@ async function scanMusicFolders() {
     });
     if (res.ok) {
       const data = await res.json();
-      const tracks = Array.isArray(data) ? data : (data.tracks || []);
-      state.tracks = isPlexOnlyPlayerSource() ? tracks.filter(t => isPlexTrack(t)) : tracks;
-      if (elements.scanStatusMsg) elements.scanStatusMsg.textContent = `✅ ${tracks.length} Songs eingelesen`;
-      showToast(`✅ ${tracks.length} Songs erfolgreich synchronisiert!`);
+      const rawTracks = Array.isArray(data) ? data : (data.tracks || []);
+      const tracks = isPlexOnlyPlayerSource() ? rawTracks.filter(t => isPlexTrack(t)) : rawTracks;
+      state.tracks = deduplicateTracksList(tracks);
+      if (elements.scanStatusMsg) elements.scanStatusMsg.textContent = `✅ ${state.tracks.length} Songs eingelesen`;
+      showToast(`✅ ${state.tracks.length} Songs erfolgreich synchronisiert!`);
       updateBadgeCounts();
       renderTracksTable();
       renderArtistsGrid();
@@ -4817,6 +4915,7 @@ async function loadInitialTracks() {
       if (isPlexOnly) {
         tracks = tracks.filter(t => isPlexTrack(t));
       }
+      tracks = deduplicateTracksList(tracks);
       if (tracks.length > 0) {
         state.tracks = tracks;
         updateBadgeCounts();
@@ -4850,7 +4949,7 @@ async function loadInitialTracks() {
       const rawLocal = window.AndroidBridge.getLocalDeviceTracksJson();
       const localDeviceTracks = JSON.parse(rawLocal || '[]');
       if (localDeviceTracks && localDeviceTracks.length > 0) {
-        state.tracks = localDeviceTracks;
+        state.tracks = deduplicateTracksList(localDeviceTracks);
         updateBadgeCounts();
         renderTracksTable();
         renderArtistsGrid();
@@ -4870,7 +4969,7 @@ async function loadInitialTracks() {
       try {
         const parsed = JSON.parse(cachedHost);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          state.tracks = parsed;
+          state.tracks = deduplicateTracksList(parsed);
           updateBadgeCounts();
           renderTracksTable();
           renderArtistsGrid();
@@ -4888,7 +4987,7 @@ async function loadInitialTracks() {
       if (plexRes.ok) {
         const plexData = await plexRes.json();
         if (plexData.tracks) {
-          state.tracks = plexData.tracks;
+          state.tracks = deduplicateTracksList(plexData.tracks);
           updateBadgeCounts();
           renderTracksTable();
           renderArtistsGrid();
@@ -5461,7 +5560,7 @@ function renderArtistsGrid() {
   if (!elements.artistsGrid) return;
   const artistMap = new Map();
 
-  state.tracks.forEach(t => {
+  getFilteredTracks().forEach(t => {
     const art = (t.artist || 'Unbekannter Künstler').trim();
     if (!artistMap.has(art)) {
       artistMap.set(art, { name: art, tracks: [], firstTrack: t });
@@ -5526,7 +5625,7 @@ function renderAlbumsGrid() {
   if (!elements.albumsGrid) return;
   const albumMap = new Map();
 
-  state.tracks.forEach(t => {
+  getFilteredTracks().forEach(t => {
     const alb = (t.album || 'Unbekanntes Album').trim();
     const key = `${alb}____${t.artist || ''}`;
     if (!albumMap.has(key)) {
@@ -5596,42 +5695,9 @@ function renderAlbumsGrid() {
   attachScrollObserver(elements.albumsGrid, appendAlbumsChunk);
 }
 
-
 // ==========================================================================
 // Enhanced Global Search & Unified Queue Rendering Engine
 // ==========================================================================
-
-function getFilteredTracks() {
-  let list = state.tracks;
-
-  if (state.activeSource === 'host') {
-    list = list.filter(t => isHostTrack(t));
-  } else if (state.activeSource === 'plex') {
-    list = list.filter(t => t.source === 'plex' || (t.file_path && t.file_path.startsWith('plex://')) || (t.id && String(t.id).startsWith('plex://')));
-  } else if (state.activeSource === 'local') {
-    list = list.filter(t => !isHostTrack(t) && t.source !== 'plex' &&
-      !(t.file_path && t.file_path.startsWith('plex://')) &&
-      !(t.id && String(t.id).startsWith('plex://')));
-  }
-
-  if (state.activeView === 'favorites') {
-    list = list.filter(t => state.favorites.has(t.id || t.file_path));
-  }
-
-  if (state.searchQuery) {
-    const q = state.searchQuery.toLowerCase().trim();
-    list = list.filter(t => {
-      const title = (t.title || '').toLowerCase();
-      const artist = (t.artist || '').toLowerCase();
-      const album = (t.album || '').toLowerCase();
-      const genre = (t.genre || '').toLowerCase();
-      const path = (t.file_path || '').toLowerCase();
-      return title.includes(q) || artist.includes(q) || album.includes(q) || genre.includes(q) || path.includes(q);
-    });
-  }
-
-  return list;
-}
 
 function renderQueueView() {
   if (!elements.queueListContainer) return;
@@ -6891,7 +6957,7 @@ function renderAlbumsGrid() {
   if (!elements.albumsGrid) return;
   const albumMap = new Map();
 
-  state.tracks.forEach(t => {
+  getFilteredTracks().forEach(t => {
     const alb = (t.album || 'Unbekanntes Album').trim();
     const key = `${alb}____${t.artist || ''}`;
     if (!albumMap.has(key)) {
