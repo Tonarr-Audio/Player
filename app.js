@@ -3785,7 +3785,7 @@ function setupEventListeners() {
     containerEl.style.display = 'flex';
     containerEl.innerHTML = `
       <div style="padding:14px; background:rgba(139,92,246,0.1); border:1px solid rgba(139,92,246,0.3); border-radius:var(--radius-md); text-align:center;">
-        <span style="font-size:0.88rem; color:#c4b5fd;">⏳ Scanne lokales Netzwerk nach SoundSphere / Tonarr Host (Port 8765)...</span>
+        <span style="font-size:0.88rem; color:#c4b5fd;">⏳ Scanne lokales Netzwerk nach Tonarr Host (Port 8765)...</span>
       </div>
     `;
 
@@ -4150,7 +4150,7 @@ function setupEventListeners() {
               window.open(data.auth_url, '_blank');
             }
             if (elements.plexStatusMsg) {
-              elements.plexStatusMsg.innerHTML = `🌐 Bitte autorisiere SoundSphere im geöffneten Anmeldefenster... (PIN: <strong>${escapeHtml(data.code || '')}</strong>)`;
+              elements.plexStatusMsg.innerHTML = `🌐 Bitte autorisiere Tonarr im geöffneten Anmeldefenster... (PIN: <strong>${escapeHtml(data.code || '')}</strong>)`;
             }
             
             let attempts = 0;
